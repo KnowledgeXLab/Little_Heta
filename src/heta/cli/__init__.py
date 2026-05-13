@@ -9,6 +9,7 @@ from heta.cli import init as init_module
 from heta.cli.init import interactive_init
 from heta.cli.insert import insert_command
 from heta.cli.query import query_command
+from heta.cli.recall import recall_command
 from heta.cli.remember import remember_command
 from heta.cli.status import status_command
 from heta.cli.vector import app as vector_app
@@ -40,5 +41,6 @@ app.command("insert")(insert_command)
 app.command("query")(query_command)
 app.command("clean")(clean_command)
 app.command("remember")(remember_command)
+app.command("recall")(recall_command)
 app.command("status")(status_command)
 app.add_typer(vector_app)
