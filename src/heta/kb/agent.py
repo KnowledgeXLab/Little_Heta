@@ -388,20 +388,25 @@ def _execute_tools(
         except json.JSONDecodeError as exc:
             output = f"error: invalid tool arguments: {exc}"
         else:
-            if name == "read_page":
-                output = read_page(root_dir, **arguments)
-                if not output.startswith("error:"):
-                    read_paths.add(_normalize_path(arguments.get("path", "")))
-            elif name == "create_page":
-                output = create_page(root_dir, written_paths=written_paths, **arguments)
-            elif name == "edit_page":
-                output = edit_page(root_dir, written_paths=written_paths, **arguments)
-            elif name == "delete_page":
-                output = delete_page(root_dir, written_paths=written_paths, **arguments)
-            elif name == "append_log":
-                output = append_log(root_dir, **arguments)
-            else:
-                output = f"error: unknown tool {name}"
+            try:
+                if name == "read_page":
+                    output = read_page(root_dir, **arguments)
+                    if not output.startswith("error:"):
+                        read_paths.add(_normalize_path(arguments.get("path", "")))
+                elif name == "create_page":
+                    output = create_page(root_dir, written_paths=written_paths, **arguments)
+                elif name == "edit_page":
+                    output = edit_page(root_dir, written_paths=written_paths, **arguments)
+                elif name == "delete_page":
+                    output = delete_page(root_dir, written_paths=written_paths, **arguments)
+                elif name == "append_log":
+                    output = append_log(root_dir, **arguments)
+                else:
+                    output = f"error: unknown tool {name}"
+            except TypeError as exc:
+                output = f"error: invalid tool arguments for {name}: {exc}"
+            except Exception as exc:
+                output = f"error: tool {name} failed: {exc}"
 
         results.append({"role": "tool", "tool_call_id": tool_call.id, "content": output})
     return results

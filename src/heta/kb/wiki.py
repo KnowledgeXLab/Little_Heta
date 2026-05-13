@@ -103,6 +103,33 @@ def validate_wiki(wiki_root: Path) -> None:
                 raise ValueError(f"broken wiki link in {page.name}: {link}")
 
 
+def repair_broken_wiki_links(wiki_root: Path) -> None:
+    """Downgrade broken wiki links to plain text before validation."""
+    pages = wiki_root / "pages"
+    if not pages.exists():
+        return
+
+    page_titles = set()
+    for page in pages.glob("*.md"):
+        text = page.read_text(encoding="utf-8")
+        title = _frontmatter_value(text, "title") or page.stem
+        page_titles.add(title.strip().lower())
+        page_titles.add(page.stem.strip().lower())
+
+    for page in pages.glob("*.md"):
+        text = page.read_text(encoding="utf-8")
+
+        def replace(match: re.Match[str]) -> str:
+            link = match.group(1).strip()
+            if link.lower() in page_titles:
+                return match.group(0)
+            return link
+
+        repaired = re.sub(r"\[\[([^\]]+)\]\]", replace, text)
+        if repaired != text:
+            page.write_text(repaired, encoding="utf-8")
+
+
 def normalize_wiki_pages(wiki_root: Path) -> NormalizeResult:
     """Assign numeric page filename prefixes and rewrite index paths.
 
