@@ -1,0 +1,82 @@
+"""Transactional `heta insert` implementation."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
+
+from heta.config.schema import HetaConfig
+from heta.kb.discovery import collect_insert_files
+from heta.kb.agent import run_merge_agent
+from heta.kb.models import InsertResult, ParsedDocument
+from heta.kb.parser import parse_document
+from heta.kb.store import commit_wiki, ensure_wiki_layout, reset_wiki, save_raw_file
+from heta.kb.vector_index import sync_wiki_vector_index
+from heta.kb.wiki import apply_path_map, normalize_wiki_pages, validate_wiki
+from heta.kb.workspace import cleanup_working_copy, create_working_copy, promote_working_copy
+
+
+def insert_paths(
+    targets: list[Path],
+    config: HetaConfig,
+    *,
+    base_dir: Path | None = None,
+) -> InsertResult:
+    files = collect_insert_files(targets, config)
+    if not files:
+        raise ValueError("No supported files found.")
+
+    task_id = f"insert_{datetime.now():%Y%m%d_%H%M%S}_{uuid4().hex[:8]}"
+    raw_files: list[Path] = []
+
+    ensure_wiki_layout(base_dir)
+
+    try:
+        parsed_documents: list[ParsedDocument] = []
+        for file in files:
+            archived = save_raw_file(file, base_dir)
+            raw_files.append(archived)
+            parsed_documents.append(parse_document(file, archived, config))
+
+        working_wiki = create_working_copy(task_id, base_dir)
+        agent_result = run_merge_agent(
+            task_id=task_id,
+            documents=parsed_documents,
+            root_dir=working_wiki,
+            config=config,
+        )
+        if not (agent_result["added"] or agent_result["updated"] or agent_result["deleted"]):
+            raise RuntimeError("Agent completed without changing the wiki.")
+        normalize_result = normalize_wiki_pages(working_wiki)
+        validate_wiki(working_wiki)
+        promote_working_copy(task_id, base_dir)
+        commit_id = commit_wiki(f"ingest: {', '.join(file.name for file in files)}", base_dir)
+        added = apply_path_map(agent_result["added"], normalize_result.path_map)
+        updated = apply_path_map(agent_result["updated"], normalize_result.path_map)
+        deleted = agent_result["deleted"]
+        if config.vector_index.enable:
+            try:
+                sync_wiki_vector_index(
+                    changes=[*added, *updated, *deleted],
+                    config=config,
+                    base_dir=base_dir,
+                )
+            except Exception:
+                pass
+        cleanup_working_copy(task_id, base_dir)
+
+        return InsertResult(
+            commit_id=commit_id,
+            added=added,
+            updated=updated,
+            deleted=deleted,
+            raw_files=raw_files,
+        )
+    except BaseException:
+        for raw in raw_files:
+            if raw.exists():
+                raw.unlink()
+        cleanup_working_copy(task_id, base_dir)
+        reset_wiki(base_dir)
+        raise
