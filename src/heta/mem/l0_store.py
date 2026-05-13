@@ -14,4 +14,8 @@ def insert_turn(conn: sqlite3.Connection, turn: L0Turn) -> None:
         (turn.session_id, turn.turn_index, turn.role,
          turn.modality, turn.text_content, turn.created_at),
     )
+    conn.execute(
+        "INSERT INTO l0_turn_fts (session_id, turn_index, text_content) VALUES (?, ?, ?)",
+        (turn.session_id, turn.turn_index, turn.text_content),
+    )
     conn.commit()

@@ -5,9 +5,17 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import sqlite_vec
 
-def get_connection(path: Path) -> sqlite3.Connection:
+from heta.mem.client import EMBEDDING_DIM
+
+
+def get_connection(path: Path, *, with_vec: bool = False) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
+    if with_vec:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
@@ -52,14 +60,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS l1_episodic (
-            memory_id  TEXT PRIMARY KEY REFERENCES memory_meta(memory_id) ON DELETE CASCADE,
-            who        TEXT NOT NULL,
-            what       TEXT NOT NULL,
-            where_loc  TEXT,
-            when_ts    INTEGER,
-            when_text  TEXT,
-            why        TEXT,
-            summary    TEXT NOT NULL
+            memory_id      TEXT PRIMARY KEY REFERENCES memory_meta(memory_id) ON DELETE CASCADE,
+            who            TEXT NOT NULL,
+            what           TEXT NOT NULL,
+            where_loc      TEXT,
+            when_ts        INTEGER,
+            when_text      TEXT,
+            when_resolved  TEXT,
+            when_precision TEXT,
+            why            TEXT,
+            summary        TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_l1_when ON l1_episodic(when_ts);
@@ -70,17 +80,54 @@ def init_db(conn: sqlite3.Connection) -> None:
             predicate     TEXT    NOT NULL,
             object        TEXT    NOT NULL,
             object_type   TEXT    NOT NULL DEFAULT 'literal',
+            fact_text     TEXT    NOT NULL DEFAULT '',
             t_valid_start INTEGER NOT NULL,
             t_valid_end   INTEGER
         );
 
-        CREATE INDEX IF NOT EXISTS idx_l2_subject_active
-            ON l2_semantic(subject, predicate) WHERE t_valid_end IS NULL;
-
-        CREATE INDEX IF NOT EXISTS idx_l2_object_active
-            ON l2_semantic(object, predicate) WHERE t_valid_end IS NULL;
-
-        CREATE INDEX IF NOT EXISTS idx_l2_predicate
-            ON l2_semantic(predicate);
+        CREATE INDEX IF NOT EXISTS idx_l2_predicate ON l2_semantic(predicate);
     """)
+    _migrate(conn)
+    _ensure_vec_table(conn)
     conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after initial schema creation."""
+    l2_cols = {row[1] for row in conn.execute("PRAGMA table_info(l2_semantic)")}
+    if "fact_text" not in l2_cols:
+        conn.execute("ALTER TABLE l2_semantic ADD COLUMN fact_text TEXT NOT NULL DEFAULT ''")
+    if "when_text" not in l2_cols:
+        conn.execute("ALTER TABLE l2_semantic ADD COLUMN when_text TEXT")
+    if "when_resolved" not in l2_cols:
+        conn.execute("ALTER TABLE l2_semantic ADD COLUMN when_resolved TEXT")
+    if "when_precision" not in l2_cols:
+        conn.execute("ALTER TABLE l2_semantic ADD COLUMN when_precision TEXT")
+
+    l1_cols = {row[1] for row in conn.execute("PRAGMA table_info(l1_episodic)")}
+    if "when_resolved" not in l1_cols:
+        conn.execute("ALTER TABLE l1_episodic ADD COLUMN when_resolved TEXT")
+    if "when_precision" not in l1_cols:
+        conn.execute("ALTER TABLE l1_episodic ADD COLUMN when_precision TEXT")
+
+
+def _ensure_vec_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        f"""CREATE VIRTUAL TABLE IF NOT EXISTS l2_fact_vec USING vec0(
+            memory_id TEXT PRIMARY KEY,
+            embedding FLOAT[{EMBEDDING_DIM}]
+        )"""
+    )
+    conn.execute(
+        f"""CREATE VIRTUAL TABLE IF NOT EXISTS l1_episode_vec USING vec0(
+            memory_id TEXT PRIMARY KEY,
+            embedding FLOAT[{EMBEDDING_DIM}]
+        )"""
+    )
+    conn.execute(
+        """CREATE VIRTUAL TABLE IF NOT EXISTS l0_turn_fts USING fts5(
+            session_id UNINDEXED,
+            turn_index UNINDEXED,
+            text_content
+        )"""
+    )

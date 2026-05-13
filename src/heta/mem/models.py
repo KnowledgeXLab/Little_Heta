@@ -48,8 +48,10 @@ class L1Episodic:
     who: str            # JSON array, e.g. '["Alice", "Bob"]'
     what: str
     where_loc: str | None
-    when_ts: int | None
-    when_text: str | None
+    when_ts: int | None           # unix timestamp of period start
+    when_text: str | None         # original expression ("昨天", "下个月")
+    when_resolved: str | None     # variable-precision: "2026-05-12" / "2026-06" / "2026"
+    when_precision: str | None    # day / week / month / year
     why: str | None
     summary: str        # used for vector embedding
 
@@ -60,6 +62,10 @@ class L2Semantic:
     subject: str
     predicate: str
     object: str
-    object_type: str    # literal / entity_ref
+    object_type: str        # literal / entity_ref
+    fact_text: str          # natural language form, used for embedding
     t_valid_start: int
     t_valid_end: int | None = None
+    when_text: str | None = None      # original relative expression ("下个月")
+    when_resolved: str | None = None  # variable-precision: "2026-06" / "2026-05-12"
+    when_precision: str | None = None # day / week / month / year
