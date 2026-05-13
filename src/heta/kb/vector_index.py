@@ -73,18 +73,21 @@ def sync_wiki_vector_index(
     try:
         _ensure_schema(conn)
         changed = list(changes)
-        pages_to_embed: list[Path] = []
+        deleted_wiki_ids: set[int] = set()
+        pages_to_embed: dict[int, Path] = {}
         for change in changed:
             wiki_id = _wiki_id_from_path(change.path)
             if wiki_id is not None:
-                _delete_page_chunks(conn, wiki_id)
+                if wiki_id not in deleted_wiki_ids:
+                    _delete_page_chunks(conn, wiki_id)
+                    deleted_wiki_ids.add(wiki_id)
             if change.kind == "deleted":
                 continue
             page = paths.wiki_dir(base_dir) / change.path
-            if page.exists():
-                pages_to_embed.append(page)
+            if page.exists() and wiki_id is not None:
+                pages_to_embed[wiki_id] = page
 
-        chunks = [chunk for page in pages_to_embed for chunk in chunk_wiki_page(page)]
+        chunks = [chunk for page in pages_to_embed.values() for chunk in chunk_wiki_page(page)]
         if chunks:
             embeddings = _embed_texts([chunk.content for chunk in chunks], config)
             for chunk, embedding in zip(chunks, embeddings, strict=True):

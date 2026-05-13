@@ -7,7 +7,14 @@ import sqlite_vec
 
 from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb import paths
-from heta.kb.vector_index import _ensure_schema, _insert_chunk, chunk_wiki_page, search_wiki_vector_index
+from heta.kb.models import FileChange
+from heta.kb.vector_index import (
+    _ensure_schema,
+    _insert_chunk,
+    chunk_wiki_page,
+    search_wiki_vector_index,
+    sync_wiki_vector_index,
+)
 
 
 def test_chunk_wiki_page_uses_heading_path_and_page_context(tmp_path: Path) -> None:
@@ -86,6 +93,46 @@ def test_search_wiki_vector_index_returns_ranked_chunks(monkeypatch, tmp_path: P
     assert results[0].page_name == "1-hetagen.md"
     assert results[0].heading_path == "Content"
     assert results[0].score == 1.0
+
+
+def test_sync_wiki_vector_index_deduplicates_repeated_page_changes(monkeypatch, tmp_path: Path) -> None:
+    _write_page(
+        tmp_path,
+        "1-hetagen.md",
+        "HetaGen",
+        "Structured content generation.",
+        """
+### Capabilities
+
+HetaGen supports table synthesis.
+
+### Query
+
+HetaGen can answer structured questions.
+""",
+    )
+    monkeypatch.setattr("heta.kb.vector_index._embed_texts", lambda texts, config: [[1.0] + [0.0] * 1023 for _ in texts])
+    config = HetaConfig(
+        version=1,
+        llm=LLMConfig(provider="qwen", api_key="sk-test"),
+        mineru=MinerUConfig.disabled(),
+        vector_index=VectorIndexConfig.enabled(),
+    )
+
+    sync_wiki_vector_index(
+        changes=[
+            FileChange("added", "HetaGen", "pages/1-hetagen.md"),
+            FileChange("updated", "HetaGen", "pages/1-hetagen.md"),
+        ],
+        config=config,
+        base_dir=tmp_path,
+    )
+
+    conn = sqlite3.connect(paths.vector_db_path(tmp_path))
+    try:
+        assert conn.execute("SELECT count(*) FROM wiki_chunks").fetchone()[0] == 2
+    finally:
+        conn.close()
 
 
 def _write_page(tmp_path: Path, name: str, title: str, summary: str, content: str) -> Path:
