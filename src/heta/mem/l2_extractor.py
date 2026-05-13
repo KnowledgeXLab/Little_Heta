@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from openai import OpenAI
@@ -20,19 +21,29 @@ def extract_facts(
     model: str,
     text: str,
     config: HetaConfig,
+    session_ts: int | None = None,
 ) -> list[dict[str, Any]]:
     """Call the LLM and return a list of raw fact dicts."""
+    anchor_date = _fmt_date(session_ts)
+    user_content = f"Anchor date: {anchor_date}\n\nText:\n{text}"
+
     response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": FACT_EXTRACTION_PROMPT},
-            {"role": "user", "content": text},
+            {"role": "user", "content": user_content},
         ],
         temperature=0.2,
         **({"extra_body": extra_body(config)} if extra_body(config) else {}),
     )
     raw = response.choices[0].message.content or ""
     return _parse_facts(raw)
+
+
+def _fmt_date(ts: int | None) -> str:
+    if ts is None:
+        return datetime.now().strftime("%Y-%m-%d")
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
 
 
 def _parse_facts(raw: str) -> list[dict[str, Any]]:
