@@ -160,7 +160,9 @@ Rules:
 {vector_rule}
 - Stop reading when the context is enough.
 - If the wiki does not contain enough evidence, say what is missing.
-- Answer directly and include a short Sources section with page titles or paths you used.
+- Answer directly in Markdown.
+- Do not include a Sources, References, or Citations section in the answer body.
+  The CLI renders sources separately from tool usage.
 """
 
 
@@ -228,4 +230,3 @@ def _build_sources(
     for path in sorted(read_paths):
         sources[path] = source_from_page_path(path, base_dir)
     return list(sources.values())
-
