@@ -38,9 +38,15 @@ def insert_paths(
         prepared_sources, pdf_plans = plan_insert_files(
             files,
             enable_pdf_planning=enable_pdf_planning,
+            config=config,
             base_dir=base_dir,
         )
         raw_files.extend(source.archived_path for source in prepared_sources)
+        raw_files.extend(
+            source.metadata_path
+            for source in prepared_sources
+            if source.metadata_path is not None and source.metadata_path not in raw_files
+        )
         raw_files.extend(
             source.original_path
             for source in prepared_sources

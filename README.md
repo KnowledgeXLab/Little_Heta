@@ -61,8 +61,10 @@ Insert one file or a directory:
 heta insert ./docs
 ```
 
-Large PDFs are split before parsing by default. Disable this behavior when you
-want to parse a PDF as one source file:
+Large PDFs are profiled and split before parsing by default. Little Heta gives a
+lightweight PDF profile to a planning agent, validates the returned page ranges,
+and falls back to fixed page windows when planning is unavailable. Disable this
+behavior when you want to parse a PDF as one source file:
 
 ```bash
 heta insert --no-pdf-planning ./large.pdf
