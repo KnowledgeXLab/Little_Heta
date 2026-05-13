@@ -18,7 +18,7 @@ from heta.kb.agent import _chat_completion, _get_client
 from heta.kb.text import slugify
 
 PDF_PAGE_THRESHOLD = 80
-PDF_PART_MAX_PAGES = 40
+PDF_PART_MAX_PAGES = 20
 PDF_PROFILE_MAX_CHARS = 12000
 
 

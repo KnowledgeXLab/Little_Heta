@@ -14,7 +14,7 @@ from heta.kb.parser import parse_document
 from heta.kb.pdf_plan import plan_insert_files
 from heta.kb.store import commit_wiki, ensure_wiki_layout, reset_wiki
 from heta.kb.vector_index import sync_wiki_vector_index
-from heta.kb.wiki import apply_path_map, normalize_wiki_pages, validate_wiki
+from heta.kb.wiki import apply_path_map, normalize_wiki_pages, repair_broken_wiki_links, validate_wiki
 from heta.kb.workspace import cleanup_working_copy, create_working_copy, promote_working_copy
 
 
@@ -66,6 +66,7 @@ def insert_paths(
         if not (agent_result["added"] or agent_result["updated"] or agent_result["deleted"]):
             raise RuntimeError("Agent completed without changing the wiki.")
         normalize_result = normalize_wiki_pages(working_wiki)
+        repair_broken_wiki_links(working_wiki)
         validate_wiki(working_wiki)
         promote_working_copy(task_id, base_dir)
         commit_id = commit_wiki(f"ingest: {', '.join(file.name for file in files)}", base_dir)

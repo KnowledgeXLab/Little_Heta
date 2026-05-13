@@ -7,7 +7,7 @@ from heta.kb.discovery import collect_insert_files
 from heta.kb.models import FileChange
 from heta.kb.insert import insert_paths
 from heta.kb.text import frontmatter_page, slugify, summarize
-from heta.kb.wiki import normalize_wiki_pages
+from heta.kb.wiki import normalize_wiki_pages, repair_broken_wiki_links
 
 
 def _config(mineru: MinerUConfig | None = None) -> HetaConfig:
@@ -142,3 +142,30 @@ def test_normalize_wiki_pages_assigns_max_plus_one_without_reusing_deleted_ids(t
     assert "- [1] [[Old]] (pages/1-old.md) — Old summary." in index
     assert "- [3] [[Existing]] (pages/3-existing.md) — Existing summary." in index
     assert "- [4] [[New Topic]] (pages/4-new-topic.md) — New summary." in index
+
+
+def test_repair_broken_wiki_links_downgrades_missing_targets(tmp_path: Path) -> None:
+    wiki = tmp_path / "wiki"
+    pages = wiki / "pages"
+    pages.mkdir(parents=True)
+    page = pages / "1-topic.md"
+    page.write_text(
+        frontmatter_page(
+            "Topic",
+            "source.md",
+            "Summary.",
+            "See [[Existing Topic]] and [[Missing Topic]].",
+        ),
+        encoding="utf-8",
+    )
+    (pages / "2-existing-topic.md").write_text(
+        frontmatter_page("Existing Topic", "source.md", "Summary.", "Body."),
+        encoding="utf-8",
+    )
+
+    repair_broken_wiki_links(wiki)
+
+    text = page.read_text(encoding="utf-8")
+    assert "[[Existing Topic]]" in text
+    assert "[[Missing Topic]]" not in text
+    assert "Missing Topic" in text
