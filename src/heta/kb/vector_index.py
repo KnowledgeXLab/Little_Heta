@@ -42,6 +42,17 @@ class WikiChunk:
     content_hash: str
 
 
+@dataclass(frozen=True)
+class WikiChunkSearchResult:
+    wiki_id: int
+    page_name: str
+    chunk_id: str
+    heading_path: str
+    content: str
+    distance: float
+    score: float
+
+
 def sync_wiki_vector_index(
     *,
     changes: Iterable[FileChange],
@@ -84,6 +95,57 @@ def sync_wiki_vector_index(
         raise
     finally:
         conn.close()
+
+
+def search_wiki_vector_index(
+    *,
+    query: str,
+    config: HetaConfig,
+    top_k: int = 5,
+    base_dir: Path | None = None,
+) -> list[WikiChunkSearchResult]:
+    """Return semantic wiki chunk matches from sqlite-vec."""
+    db_path = paths.vector_db_path(base_dir)
+    if not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(db_path)
+    conn.enable_load_extension(True)
+    sqlite_vec.load(conn)
+    conn.enable_load_extension(False)
+    try:
+        embedding = _embed_texts([query], config)[0]
+        rows = conn.execute(
+            """
+            SELECT
+              c.wiki_id,
+              c.page_name,
+              c.chunk_id,
+              c.heading_path,
+              c.content,
+              v.distance
+            FROM wiki_chunk_vec v
+            JOIN wiki_chunks c ON c.id = v.rowid
+            WHERE v.embedding MATCH ? AND k = ?
+            ORDER BY v.distance
+            """,
+            (sqlite_vec.serialize_float32(embedding), max(1, top_k)),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [
+        WikiChunkSearchResult(
+            wiki_id=int(row[0]),
+            page_name=str(row[1]),
+            chunk_id=str(row[2]),
+            heading_path=str(row[3]),
+            content=str(row[4]),
+            distance=float(row[5]),
+            score=1.0 / (1.0 + float(row[5])),
+        )
+        for row in rows
+    ]
 
 
 def chunk_wiki_page(page: Path) -> list[WikiChunk]:
@@ -266,4 +328,10 @@ def _hash_text(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-__all__ = ["WikiChunk", "chunk_wiki_page", "sync_wiki_vector_index"]
+__all__ = [
+    "WikiChunk",
+    "WikiChunkSearchResult",
+    "chunk_wiki_page",
+    "search_wiki_vector_index",
+    "sync_wiki_vector_index",
+]
