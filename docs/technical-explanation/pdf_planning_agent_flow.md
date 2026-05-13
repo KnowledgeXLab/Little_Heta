@@ -26,10 +26,10 @@ flowchart TD
     J --> K["run_pdf_planning_agent"]
     K --> L{"agent plan valid?"}
 
-    L -->|No| M["fallback plan<br/>fixed 40-page windows"]
+    L -->|No| M["fallback plan<br/>fixed 20-page windows"]
     L -->|Yes| N["validate and normalize plan"]
 
-    N --> O["split oversized units<br/>max 40 pages each"]
+    N --> O["split oversized units<br/>max 20 pages each"]
     O --> P["fill missing page ranges"]
     P --> Q["remove overlaps by sorting and cropping"]
 
@@ -153,8 +153,8 @@ flowchart TD
     D -->|No| F
     D -->|Yes| E["normalize units"]
 
-    E --> G{"unit > 40 pages?"}
-    G -->|Yes| H["split oversized unit<br/>into <=40-page parts"]
+    E --> G{"unit > 20 pages?"}
+    G -->|Yes| H["split oversized unit<br/>into <=20-page parts"]
     G -->|No| I["keep unit"]
     H --> J["sort units by start_page"]
     I --> J
@@ -177,7 +177,7 @@ Validation rules:
 - Oversized units are split into smaller parts.
 - Missing page ranges are filled automatically.
 - Overlapping ranges are cropped after sorting.
-- If the plan is invalid, Little Heta falls back to fixed 40-page windows.
+- If the plan is invalid, Little Heta falls back to fixed 20-page windows.
 
 ## Split Output
 
@@ -188,10 +188,10 @@ raw/
   originals/
     2026-05-13_143000_big-book.pdf
 
-  2026-05-13_143000_big-book_part-001_intro_pages-1-40.pdf
-  2026-05-13_143000_big-book_part-001_intro_pages-1-40.meta.json
-  2026-05-13_143000_big-book_part-002_methods_pages-41-80.pdf
-  2026-05-13_143000_big-book_part-002_methods_pages-41-80.meta.json
+  2026-05-13_143000_big-book_part-001_intro_pages-1-20.pdf
+  2026-05-13_143000_big-book_part-001_intro_pages-1-20.meta.json
+  2026-05-13_143000_big-book_part-002_methods_pages-21-40.pdf
+  2026-05-13_143000_big-book_part-002_methods_pages-21-40.meta.json
 ```
 
 Each `.meta.json` records traceability:
@@ -199,10 +199,10 @@ Each `.meta.json` records traceability:
 ```json
 {
   "original": "raw/originals/2026-05-13_143000_big-book.pdf",
-  "part": "raw/2026-05-13_143000_big-book_part-001_intro_pages-1-40.pdf",
+  "part": "raw/2026-05-13_143000_big-book_part-001_intro_pages-1-20.pdf",
   "title": "Introduction",
   "start_page": 1,
-  "end_page": 40,
+  "end_page": 20,
   "document_type": "report",
   "split_strategy": "section"
 }
@@ -213,9 +213,9 @@ Each `.meta.json` records traceability:
 Fallback is intentionally simple and deterministic:
 
 ```text
-Pages 1-40
-Pages 41-80
-Pages 81-120
+Pages 1-20
+Pages 21-40
+Pages 41-60
 ...
 ```
 
