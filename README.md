@@ -61,6 +61,12 @@ Insert one file or a directory:
 heta insert ./docs
 ```
 
+Ask a read-only question against the wiki:
+
+```bash
+heta query "What is HetaGen?"
+```
+
 Manage vector indexing:
 
 ```bash
