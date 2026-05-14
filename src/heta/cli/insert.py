@@ -7,12 +7,14 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
 
 from heta.config.io import CONFIG_PATH, load_config
 from heta.kb import paths
 from heta.kb.discovery import collect_insert_files, supported_extensions
 from heta.kb.insert import insert_paths
+from heta.kb.models import InsertProgress
 from heta.kb.pdf_plan import PDF_PAGE_THRESHOLD, estimate_pdf_pages
 
 console = Console()
@@ -57,8 +59,18 @@ def insert_command(
     _show_plan(files, config, pdf_planning=pdf_planning)
 
     try:
-        with console.status(f"[bold {HETA}]heta insert[/] [{MUTED}]parsing files and merging wiki[/]", spinner="dots"):
-            result = insert_paths(targets or [], config, enable_pdf_planning=pdf_planning)
+        with _insert_progress() as progress:
+            task_id = progress.add_task("preparing insert", total=100, completed=0)
+
+            def on_progress(event: InsertProgress) -> None:
+                progress.update(task_id, completed=event.percent, description=_progress_description(event))
+
+            result = insert_paths(
+                targets or [],
+                config,
+                enable_pdf_planning=pdf_planning,
+                on_progress=on_progress,
+            )
     except KeyboardInterrupt:
         console.print(f"\n[{WARN}]Insert cancelled. Rolled back partial changes.[/]")
         raise typer.Exit(130) from None
@@ -122,6 +134,26 @@ def _show_result(result) -> None:
 
     if result.planned_pdf_parts:
         console.print(f"[{MUTED}]pdf parts:[/] {result.planned_pdf_parts}")
+
+
+def _insert_progress() -> Progress:
+    return Progress(
+        TextColumn(f"[bold {HETA}]heta insert[/]"),
+        BarColumn(bar_width=28, complete_style=HETA, finished_style=OK),
+        TaskProgressColumn(),
+        TextColumn("[dim]{task.description}[/]"),
+        console=console,
+    )
+
+
+def _progress_description(event: InsertProgress) -> str:
+    if event.phase == "merge":
+        return f"merging {event.current}/{event.total} · {event.label}"
+    if event.phase == "finalize":
+        return "finalizing wiki, vector index, and commit"
+    if event.phase == "done":
+        return "done"
+    return event.label
 
 
 def _absolute_page_path(relative_path: str) -> str:

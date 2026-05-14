@@ -101,13 +101,19 @@ def test_insert_same_title_updates_existing_page(monkeypatch, tmp_path: Path) ->
 
 def test_insert_multiple_files_runs_agent_sequentially(monkeypatch, tmp_path: Path) -> None:
     calls: list[list[str]] = []
+    progress = []
     _fake_agent(monkeypatch, calls)
     first = tmp_path / "alpha.md"
     second = tmp_path / "beta.md"
     first.write_text("# Alpha\n\nFirst details.", encoding="utf-8")
     second.write_text("# Beta\n\nSecond details.", encoding="utf-8")
 
-    result = insert_paths([first, second], _config(), base_dir=tmp_path)
+    result = insert_paths(
+        [first, second],
+        _config(),
+        base_dir=tmp_path,
+        on_progress=progress.append,
+    )
 
     wiki = tmp_path / "workspace" / "kb" / "wiki"
     assert calls[0][0].endswith("_alpha.md")
@@ -115,6 +121,12 @@ def test_insert_multiple_files_runs_agent_sequentially(monkeypatch, tmp_path: Pa
     assert (wiki / "pages" / "1-alpha.md").exists()
     assert (wiki / "pages" / "2-beta.md").exists()
     assert [change.path for change in result.added] == ["pages/1-alpha.md", "pages/2-beta.md"]
+    assert progress[0].percent == 1
+    merge_percents = [event.percent for event in progress if event.phase == "merge"]
+    assert 50 in merge_percents
+    assert 99 in merge_percents
+    assert progress[-1].percent == 100
+    assert progress[-1].phase == "done"
 
 
 def test_pdf_requires_mineru_when_disabled(tmp_path: Path) -> None:
