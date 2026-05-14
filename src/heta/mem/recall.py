@@ -10,13 +10,23 @@ from heta.config.schema import HetaConfig
 from heta.mem.client import build_client, build_embedding_client, extra_body
 from heta.mem.db import get_connection, init_db
 from heta.mem.embedder import embed_text
+from heta.mem.kb_store import search_kb_insights
 from heta.mem.l0_search import search_turns
 from heta.mem.l1_search import search_episodes
 from heta.mem.l2_store import search_similar_facts
 from heta.mem.paths import db_path, ensure_mem_dir
-from heta.mem.prompts import RECALL_RANKER_PROMPT
+from heta.mem.prompts import RECALL_ANSWER_PROMPT, RECALL_RANKING_PROMPT
 
 logger = logging.getLogger(__name__)
+
+
+def _open_conn_and_embed(query: str, config: HetaConfig):
+    ensure_mem_dir()
+    conn = get_connection(db_path(), with_vec=True)
+    init_db(conn)
+    emb_client, emb_model = build_embedding_client(config)
+    embedding = embed_text(emb_client, emb_model, query)
+    return conn, embedding
 
 
 @dataclass
@@ -32,31 +42,43 @@ class RecallResult:
     answer: str
     reason: str
     evidence: list[LayerEvidence]
+    sufficient: bool = False
+
+
+def retrieve_evidence(query: str, config: HetaConfig, top_k: int = 5) -> list[LayerEvidence]:
+    """Pure retrieval — no LLM calls. Used by smart_query to inject context into the KB agent."""
+    conn, query_embedding = _open_conn_and_embed(query, config)
+    l0_hits = search_turns(conn, query, top_k=top_k)
+    l1_hits = search_episodes(conn, query_embedding, top_k=top_k)
+    l2_hits = search_similar_facts(conn, query_embedding, top_k=top_k)
+    kb_insight_hits = search_kb_insights(conn, query_embedding, top_k=top_k)
+    conn.close()
+    return [
+        LayerEvidence(layer="raw", items=l0_hits),
+        LayerEvidence(layer="episode", items=l1_hits),
+        LayerEvidence(layer="atomic_fact", items=l2_hits),
+        LayerEvidence(layer="kb_insight", items=kb_insight_hits),
+    ]
 
 
 def recall(query: str, config: HetaConfig, top_k: int = 10) -> RecallResult:
-    ensure_mem_dir()
-    conn = get_connection(db_path(), with_vec=True)
-    init_db(conn)
-
+    conn, query_embedding = _open_conn_and_embed(query, config)
     llm_client, llm_model = build_client(config)
-    emb_client, emb_model = build_embedding_client(config)
-
-    query_embedding = embed_text(emb_client, emb_model, query)
 
     l0_hits = search_turns(conn, query, top_k=top_k)
     l1_hits = search_episodes(conn, query_embedding, top_k=top_k)
     l2_hits = search_similar_facts(conn, query_embedding, top_k=top_k)
-
+    kb_insight_hits = search_kb_insights(conn, query_embedding, top_k=top_k)
     conn.close()
 
     evidence = [
         LayerEvidence(layer="raw", items=l0_hits),
         LayerEvidence(layer="episode", items=l1_hits),
         LayerEvidence(layer="atomic_fact", items=l2_hits),
+        LayerEvidence(layer="kb_insight", items=kb_insight_hits),
     ]
 
-    ranking, answer, reason = _rank(
+    ranking, answer, reason, sufficient = _rank(
         query=query,
         evidence=evidence,
         client=llm_client,
@@ -70,6 +92,7 @@ def recall(query: str, config: HetaConfig, top_k: int = 10) -> RecallResult:
         answer=answer,
         reason=reason,
         evidence=evidence,
+        sufficient=sufficient,
     )
 
 
@@ -79,28 +102,90 @@ def _rank(
     client,
     model: str,
     config: HetaConfig,
-) -> tuple[list[str], str, str]:
-    evidence_text = _format_evidence(evidence)
-    user_msg = f"Question:\n{query}\n\nRetrieved evidence from each memory layer:\n{evidence_text}"
+) -> tuple[list[str], str, str, bool]:
+    """Two-phase: rank layers first, then generate a strictly grounded answer."""
+    evidence_text = format_evidence(evidence)
+    body = extra_body(config)
 
+    # Phase A: rank layers (no answer generation)
+    ranking, reason = _rank_layers(
+        query=query,
+        evidence_text=evidence_text,
+        client=client,
+        model=model,
+        extra=body,
+    )
+
+    # Phase B: generate grounded answer (or [INSUFFICIENT])
+    answer, sufficient = _generate_grounded_answer(
+        query=query,
+        evidence_text=evidence_text,
+        client=client,
+        model=model,
+        extra=body,
+    )
+
+    return ranking, answer, reason, sufficient
+
+
+def _rank_layers(
+    query: str,
+    evidence_text: str,
+    client,
+    model: str,
+    extra: dict | None,
+) -> tuple[list[str], str]:
     kwargs: dict = {
         "model": model,
         "messages": [
-            {"role": "system", "content": RECALL_RANKER_PROMPT},
-            {"role": "user", "content": user_msg},
+            {"role": "system", "content": RECALL_RANKING_PROMPT},
+            {"role": "user", "content": f"Question:\n{query}\n\nEvidence:\n{evidence_text}"},
+        ],
+        "temperature": 0.1,
+    }
+    if extra:
+        kwargs["extra_body"] = extra
+    try:
+        raw = (client.chat.completions.create(**kwargs).choices[0].message.content or "").strip()
+        data = _parse_json(raw)
+        return data.get("ranking", []), data.get("reason", "")
+    except Exception:
+        logger.warning("ranking call failed", exc_info=True)
+        return [], ""
+
+
+def _generate_grounded_answer(
+    query: str,
+    evidence_text: str,
+    client,
+    model: str,
+    extra: dict | None,
+) -> tuple[str, bool]:
+    kwargs: dict = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": RECALL_ANSWER_PROMPT},
+            {"role": "user", "content": f"Question:\n{query}\n\nEvidence:\n{evidence_text}"},
         ],
         "temperature": 0.2,
     }
-    body = extra_body(config)
-    if body:
-        kwargs["extra_body"] = body
+    if extra:
+        kwargs["extra_body"] = extra
+    try:
+        raw = (client.chat.completions.create(**kwargs).choices[0].message.content or "").strip()
+        data = _parse_json(raw)
+        answer = data.get("answer", "")
+        sufficient = bool(data.get("sufficient", False))
+        if answer == "[INSUFFICIENT]" or not sufficient:
+            return "", False
+        return answer, True
+    except Exception:
+        logger.warning("answer generation call failed", exc_info=True)
+        return "", False
 
-    response = client.chat.completions.create(**kwargs)
-    raw = (response.choices[0].message.content or "").strip()
-    return _parse_rank_response(raw)
 
 
-def _format_evidence(evidence: list[LayerEvidence]) -> str:
+def format_evidence(evidence: list[LayerEvidence]) -> str:
     parts = []
     for layer_ev in evidence:
         parts.append(f"## {layer_ev.layer}")
@@ -113,22 +198,21 @@ def _format_evidence(evidence: list[LayerEvidence]) -> str:
                     parts.append(f"[{i}; score={score:.4f}] {item['text_content']}")
                 elif layer_ev.layer == "episode":
                     parts.append(f"[{i}; score={score:.4f}] {item['summary']}")
+                elif layer_ev.layer == "kb_insight":
+                    src = item.get("source_path", "")
+                    parts.append(f"[{i}; score={score:.4f}] [{src}] {item.get('insight', '')}")
                 else:
                     parts.append(f"[{i}; score={score:.4f}] {item['fact_text']}")
     return "\n".join(parts)
 
 
-def _parse_rank_response(raw: str) -> tuple[list[str], str, str]:
-    text = raw
+def _parse_json(raw: str) -> dict:
+    text = raw.strip()
     if text.startswith("```"):
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     try:
-        data = json.loads(text)
-        ranking = data.get("ranking", [])
-        answer = data.get("answer", "")
-        reason = data.get("reason", "")
-        return ranking, answer, reason
+        return json.loads(text)
     except (json.JSONDecodeError, AttributeError):
-        logger.warning("Failed to parse ranker response: %s", raw[:200])
-        return [], raw, ""
+        logger.warning("Failed to parse LLM JSON response: %s", raw[:200])
+        return {}

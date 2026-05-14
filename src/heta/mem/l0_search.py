@@ -5,11 +5,19 @@ from __future__ import annotations
 import sqlite3
 
 
+def _build_fts_query(query: str) -> str:
+    """Build an FTS5 OR query from individual tokens, avoiding syntax errors."""
+    import re
+    tokens = re.findall(r'[\w一-鿿]+', query)
+    if not tokens:
+        return '""'
+    # quote each token individually to handle special chars, then OR them
+    return " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens)
+
+
 def search_turns(conn: sqlite3.Connection, query: str, top_k: int = 3) -> list[dict]:
     """FTS5 search on raw turn text. Returns matching turns with context."""
-    # wrap in quotes for phrase search to avoid FTS5 syntax errors on
-    # punctuation and special characters
-    fts_query = '"' + query.replace('"', '""') + '"'
+    fts_query = _build_fts_query(query)
     try:
         rows = conn.execute(
             """

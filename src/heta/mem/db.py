@@ -86,6 +86,19 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_l2_predicate ON l2_semantic(predicate);
+
+        CREATE TABLE IF NOT EXISTS kb_insight (
+            memory_id    TEXT PRIMARY KEY REFERENCES memory_meta(memory_id) ON DELETE CASCADE,
+            insight      TEXT NOT NULL,
+            question     TEXT,
+            source_path  TEXT NOT NULL,
+            wiki_id      INTEGER,
+            heading_path TEXT,
+            created_at   INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_kb_insight_source ON kb_insight(source_path);
+        CREATE INDEX IF NOT EXISTS idx_kb_insight_wiki   ON kb_insight(wiki_id);
     """)
     _migrate(conn)
     _ensure_vec_table(conn)
@@ -94,6 +107,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Add columns introduced after initial schema creation."""
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
     l2_cols = {row[1] for row in conn.execute("PRAGMA table_info(l2_semantic)")}
     if "fact_text" not in l2_cols:
         conn.execute("ALTER TABLE l2_semantic ADD COLUMN fact_text TEXT NOT NULL DEFAULT ''")
@@ -109,6 +124,29 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE l1_episodic ADD COLUMN when_resolved TEXT")
     if "when_precision" not in l1_cols:
         conn.execute("ALTER TABLE l1_episodic ADD COLUMN when_precision TEXT")
+
+    # legacy tables from earlier design — kept so existing DBs don't break
+    if "kb_source" not in tables:
+        conn.execute("""CREATE TABLE kb_source (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memory_id TEXT NOT NULL,
+            wiki_id INTEGER, page_title TEXT,
+            page_path TEXT NOT NULL, heading_path TEXT,
+            synced_at INTEGER NOT NULL)""")
+    if "kb_chunk" not in tables:
+        conn.execute("""CREATE TABLE kb_chunk (
+            memory_id TEXT PRIMARY KEY, wiki_id INTEGER, page_title TEXT,
+            page_path TEXT NOT NULL, heading_path TEXT,
+            chunk_text TEXT NOT NULL, synced_at INTEGER NOT NULL)""")
+    if "kb_qa" not in tables:
+        conn.execute("""CREATE TABLE kb_qa (
+            memory_id TEXT PRIMARY KEY,
+            question TEXT NOT NULL, answer TEXT NOT NULL,
+            created_at INTEGER NOT NULL)""")
+    if "kb_qa_chunk" not in tables:
+        conn.execute("""CREATE TABLE kb_qa_chunk (
+            qa_memory_id TEXT NOT NULL, chunk_memory_id TEXT NOT NULL,
+            PRIMARY KEY (qa_memory_id, chunk_memory_id))""")
 
 
 def _ensure_vec_table(conn: sqlite3.Connection) -> None:
@@ -129,5 +167,24 @@ def _ensure_vec_table(conn: sqlite3.Connection) -> None:
             session_id UNINDEXED,
             turn_index UNINDEXED,
             text_content
+        )"""
+    )
+    conn.execute(
+        f"""CREATE VIRTUAL TABLE IF NOT EXISTS kb_insight_vec USING vec0(
+            memory_id TEXT PRIMARY KEY,
+            embedding FLOAT[{EMBEDDING_DIM}]
+        )"""
+    )
+    # legacy vec tables — kept so existing DBs don't break
+    conn.execute(
+        f"""CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunk_vec USING vec0(
+            memory_id TEXT PRIMARY KEY,
+            embedding FLOAT[{EMBEDDING_DIM}]
+        )"""
+    )
+    conn.execute(
+        f"""CREATE VIRTUAL TABLE IF NOT EXISTS kb_qa_vec USING vec0(
+            memory_id TEXT PRIMARY KEY,
+            embedding FLOAT[{EMBEDDING_DIM}]
         )"""
     )
