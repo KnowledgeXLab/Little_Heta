@@ -31,3 +31,12 @@ class InsertResult:
     deleted: list[FileChange]
     raw_files: list[Path]
     planned_pdf_parts: int = 0
+
+
+@dataclass(frozen=True)
+class InsertProgress:
+    phase: str
+    percent: int
+    current: int
+    total: int
+    label: str
