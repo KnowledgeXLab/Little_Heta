@@ -69,3 +69,14 @@ class L2Semantic:
     when_text: str | None = None      # original relative expression ("下个月")
     when_resolved: str | None = None  # variable-precision: "2026-06" / "2026-05-12"
     when_precision: str | None = None # day / week / month / year
+
+
+@dataclass
+class KBInsight:
+    memory_id: str
+    insight: str        # distilled knowledge point
+    source_path: str    # KB page this was extracted from
+    created_at: int
+    question: str | None = None
+    wiki_id: int | None = None
+    heading_path: str | None = None
