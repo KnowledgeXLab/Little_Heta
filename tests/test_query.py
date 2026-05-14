@@ -5,6 +5,7 @@ import pytest
 from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb import paths
 from heta.kb.text import frontmatter_page
+from heta.query.agent import _build_sources
 from heta.query.models import QueryResult, QuerySource, VectorMatch
 from heta.query.pipeline import run_wiki_query
 from heta.query.tools import format_vector_matches, read_page, source_from_page_path
@@ -60,6 +61,20 @@ def test_source_from_page_path_reads_frontmatter_and_wiki_id(tmp_path: Path) -> 
     source = source_from_page_path("pages/12-hetagen.md", tmp_path, heading_path="Content")
 
     assert source == QuerySource(12, "HetaGen", "pages/12-hetagen.md", "Content")
+
+
+def test_query_sources_only_include_pages_read_by_agent(tmp_path: Path) -> None:
+    pages = paths.pages_dir(tmp_path)
+    pages.mkdir(parents=True)
+    (pages / "8-image.md").write_text(frontmatter_page("Image", "image.png", "Image summary.", "Body."), encoding="utf-8")
+    (pages / "10-audio.md").write_text(
+        frontmatter_page("Audio", "audio.mp3", "Audio summary.", "Transcript."),
+        encoding="utf-8",
+    )
+
+    sources = _build_sources(read_paths={"pages/10-audio.md"}, base_dir=tmp_path)
+
+    assert sources == [QuerySource(10, "Audio", "pages/10-audio.md")]
 
 
 def test_format_vector_matches_includes_chunk_identity() -> None:
