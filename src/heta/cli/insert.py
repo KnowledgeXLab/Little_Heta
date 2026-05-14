@@ -30,11 +30,6 @@ def insert_command(
         None,
         help="File or directory paths to insert. Defaults to the current directory.",
     ),
-    pdf_planning: bool = typer.Option(
-        True,
-        "--pdf-planning/--no-pdf-planning",
-        help="Split large PDFs before parsing to avoid oversized agent context.",
-    ),
 ) -> None:
     """Insert files into the Little Heta Markdown knowledge base."""
     config = load_config()
@@ -56,6 +51,7 @@ def insert_command(
         console.print(f"[{MUTED}]  Supported:[/] {extensions}")
         raise typer.Exit(1)
 
+    pdf_planning = config.insert_planning.enable
     _show_plan(files, config, pdf_planning=pdf_planning)
 
     try:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from heta.cli.status import build_status_summary
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 
 
 def test_status_summary_counts_kb_and_wiki_pages(tmp_path: Path) -> None:
@@ -19,12 +19,14 @@ def test_status_summary_counts_kb_and_wiki_pages(tmp_path: Path) -> None:
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=MinerUConfig(enable=True, provider="local", api_key=None, endpoint="http://127.0.0.1:8000"),
         vector_index=VectorIndexConfig.enabled(),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
 
     summary = build_status_summary(config, tmp_path)
 
     assert summary.llm_provider == "qwen"
     assert summary.mineru == "local (http://127.0.0.1:8000)"
+    assert summary.insert_planning == "enabled"
     assert summary.kb_files == 2
     assert summary.wiki_pages == 1
     assert summary.heta_space == tmp_path
@@ -37,6 +39,7 @@ def test_status_summary_handles_missing_config_and_workspace(tmp_path: Path) -> 
 
     assert summary.llm_provider == "not configured"
     assert summary.mineru == "not configured"
+    assert summary.insert_planning == "not configured"
     assert summary.kb_files == 0
     assert summary.wiki_pages == 0
     assert summary.heta_used_bytes == 0
