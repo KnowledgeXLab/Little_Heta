@@ -16,7 +16,7 @@ from rich.table import Table
 
 from heta.cli.branding import APP_TAGLINE, brand_line
 from heta.config.io import CONFIG_PATH, save_config
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import HetaConfig, InsertPlanningConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.providers.llm import validate_llm
 from heta.providers.mineru import validate_mineru_cloud, validate_mineru_local
 
@@ -61,6 +61,7 @@ def _run_interactive_init() -> None:
         llm=llm_config,
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig.enabled(),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
     save_config(partial_config)
     console.print(f"[{HETA}]→[/] wrote {CONFIG_PATH}")
@@ -71,6 +72,7 @@ def _run_interactive_init() -> None:
         llm=llm_config,
         mineru=mineru_config,
         vector_index=VectorIndexConfig.enabled(),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
     save_config(final_config)
 

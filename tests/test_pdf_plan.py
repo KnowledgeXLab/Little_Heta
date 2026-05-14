@@ -3,7 +3,7 @@ from pathlib import Path
 
 from pypdf import PdfWriter
 
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb import paths
 from heta.kb.pdf_plan import PDF_PAGE_THRESHOLD, SplitUnit, estimate_pdf_pages, plan_insert_files
 
@@ -119,4 +119,5 @@ def _config() -> HetaConfig:
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig(enable=False),
+        insert_planning=InsertPlanningConfig.enabled(),
     )

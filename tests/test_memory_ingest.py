@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.mem.client import EMBEDDING_DIM
 from heta.mem.db import get_connection, init_db
 from heta.mem.pipeline import remember
@@ -53,6 +53,7 @@ def config() -> HetaConfig:
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig.enabled(),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
 
 

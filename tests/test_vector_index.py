@@ -5,7 +5,7 @@ import sqlite3
 
 import sqlite_vec
 
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb import paths
 from heta.kb.models import FileChange
 from heta.kb.vector_index import (
@@ -84,6 +84,7 @@ def test_search_wiki_vector_index_returns_ranked_chunks(monkeypatch, tmp_path: P
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig.enabled(),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
 
     results = search_wiki_vector_index(query="table synthesis", config=config, top_k=3, base_dir=tmp_path)
@@ -117,6 +118,7 @@ HetaGen can answer structured questions.
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig.enabled(),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
 
     sync_wiki_vector_index(

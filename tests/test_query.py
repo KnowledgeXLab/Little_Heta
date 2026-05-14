@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb import paths
 from heta.kb.text import frontmatter_page
 from heta.query.models import QueryResult, QuerySource, VectorMatch
@@ -16,6 +16,7 @@ def _config(vector_enabled: bool = False) -> HetaConfig:
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig(enable=vector_enabled),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
 
 
