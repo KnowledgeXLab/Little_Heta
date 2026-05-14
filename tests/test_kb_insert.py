@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from heta.config.schema import HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb.discovery import collect_insert_files
 from heta.kb.models import FileChange
 from heta.kb.insert import insert_paths
@@ -16,6 +16,7 @@ def _config(mineru: MinerUConfig | None = None) -> HetaConfig:
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=mineru or MinerUConfig.disabled(),
         vector_index=VectorIndexConfig(enable=False),
+        insert_planning=InsertPlanningConfig.enabled(),
     )
 
 

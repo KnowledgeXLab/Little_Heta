@@ -74,11 +74,28 @@ class VectorIndexConfig:
 
 
 @dataclass(frozen=True)
+class InsertPlanningConfig:
+    enable: bool
+
+    @classmethod
+    def enabled(cls) -> "InsertPlanningConfig":
+        return cls(enable=True)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "InsertPlanningConfig":
+        enable = data.get("enable")
+        if not isinstance(enable, bool):
+            raise ValueError("Invalid insert_planning enable flag in config.")
+        return cls(enable=enable)
+
+
+@dataclass(frozen=True)
 class HetaConfig:
     version: int
     llm: LLMConfig
     mineru: MinerUConfig
     vector_index: VectorIndexConfig
+    insert_planning: InsertPlanningConfig
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "HetaConfig":
@@ -88,17 +105,21 @@ class HetaConfig:
         llm = data.get("llm")
         mineru = data.get("mineru")
         vector_index = data.get("vector_index")
+        insert_planning = data.get("insert_planning")
         if not isinstance(llm, dict):
             raise ValueError("Missing LLM config.")
         if not isinstance(mineru, dict):
             raise ValueError("Missing MinerU config.")
         if not isinstance(vector_index, dict):
             raise ValueError("Missing vector_index config.")
+        if not isinstance(insert_planning, dict):
+            raise ValueError("Missing insert_planning config.")
         return cls(
             version=1,
             llm=LLMConfig.from_dict(llm),
             mineru=MinerUConfig.from_dict(mineru),
             vector_index=VectorIndexConfig.from_dict(vector_index),
+            insert_planning=InsertPlanningConfig.from_dict(insert_planning),
         )
 
     def to_dict(self) -> dict[str, Any]:

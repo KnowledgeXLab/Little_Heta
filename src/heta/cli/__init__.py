@@ -8,6 +8,7 @@ from heta.cli.clean import clean_command
 from heta.cli import init as init_module
 from heta.cli.init import interactive_init
 from heta.cli.insert import insert_command
+from heta.cli.insert_planning import app as insert_planning_app
 from heta.cli.query import query_command
 from heta.cli.recall import recall_command
 from heta.cli.remember import remember_command
@@ -43,4 +44,5 @@ app.command("clean")(clean_command)
 app.command("remember")(remember_command)
 app.command("recall")(recall_command)
 app.command("status")(status_command)
+app.add_typer(insert_planning_app)
 app.add_typer(vector_app)
