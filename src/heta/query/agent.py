@@ -66,6 +66,7 @@ def run_query_agent(
     stats = AgentStats(task_id="query", max_steps=max_steps, max_seconds=max_seconds)
     index_text = read_index(base_dir)
     initial_matches = search_vector(question, config, top_k=top_k, base_dir=base_dir)
+    primary_match_path = initial_matches[0].path if initial_matches else None
     messages: list[dict[str, Any]] = [
         {
             "role": "user",
@@ -78,7 +79,6 @@ def run_query_agent(
         }
     ]
     read_paths: set[str] = set()
-    vector_sources: dict[str, VectorMatch] = {match.path: match for match in initial_matches}
     tools = QUERY_TOOLS if config.vector_index.enable else [QUERY_TOOLS[0]]
 
     while stats.should_continue():
@@ -94,10 +94,35 @@ def run_query_agent(
         tool_calls = list(message.tool_calls or [])
 
         if not tool_calls:
+            if primary_match_path and not read_paths:
+                page_text = read_page(primary_match_path, base_dir)
+                if page_text.startswith("error:"):
+                    primary_match_path = None
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": f"The primary semantic match could not be read: {page_text}",
+                        }
+                    )
+                    stats.record("read_page primary semantic match failed", response.usage)
+                    continue
+                read_paths.add(primary_match_path)
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Inspected the most relevant semantic match page so the final answer can cite "
+                            f"evidence.\n\nPath: {primary_match_path}\n\nContent:\n{page_text}\n\n"
+                            "Now answer the original question using inspected evidence."
+                        ),
+                    }
+                )
+                stats.record("read_page primary semantic match", response.usage)
+                continue
             stats.record_completion(response.usage)
             return QueryResult(
                 answer=message.content or "",
-                sources=_build_sources(read_paths=read_paths, vector_sources=vector_sources, base_dir=base_dir),
+                sources=_build_sources(read_paths=read_paths, base_dir=base_dir),
                 usage=stats.finish("completed"),
             )
 
@@ -116,7 +141,7 @@ def run_query_agent(
             for tool_call in tool_calls
         ]
         messages.append(assistant_message)
-        messages.extend(_execute_tools(tool_calls, config, base_dir, top_k, read_paths, vector_sources))
+        messages.extend(_execute_tools(tool_calls, config, base_dir, top_k, read_paths))
         stats.record(", ".join(tool.function.name for tool in tool_calls), response.usage)
 
     messages.append(
@@ -136,7 +161,7 @@ def run_query_agent(
     stats.record_completion(final.usage)
     return QueryResult(
         answer=final.choices[0].message.content or "",
-        sources=_build_sources(read_paths=read_paths, vector_sources=vector_sources, base_dir=base_dir),
+        sources=_build_sources(read_paths=read_paths, base_dir=base_dir),
         usage=stats.finish("stopped at limit"),
     )
 
@@ -156,6 +181,8 @@ Rules:
 - Treat index.md as the global map of pages, ids, paths, and summaries.
 - Treat semantic matches as starting evidence, not final truth.
 - If a chunk is relevant but incomplete, call read_page(path) for the full page.
+- If you use a semantic match as evidence in the final answer, call read_page(path)
+  first so the CLI can cite only pages you actually inspected.
 - Follow useful [[Wiki Links]] by reading the linked pages when the index gives their paths.
 {vector_rule}
 - Stop reading when the context is enough.
@@ -190,7 +217,6 @@ def _execute_tools(
     base_dir: Path | None,
     default_top_k: int,
     read_paths: set[str],
-    vector_sources: dict[str, VectorMatch],
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for tool_call in tool_calls:
@@ -209,8 +235,6 @@ def _execute_tools(
                 query = str(arguments.get("query", ""))
                 top_k = int(arguments.get("top_k") or default_top_k)
                 matches = search_vector(query, config, top_k=top_k, base_dir=base_dir)
-                for match in matches:
-                    vector_sources.setdefault(match.path, match)
                 output = format_vector_matches(matches)
             else:
                 output = f"error: unknown tool {name}"
@@ -221,12 +245,9 @@ def _execute_tools(
 def _build_sources(
     *,
     read_paths: set[str],
-    vector_sources: dict[str, VectorMatch],
     base_dir: Path | None,
 ) -> list[QuerySource]:
     sources: dict[str, QuerySource] = {}
-    for path, match in vector_sources.items():
-        sources[path] = source_from_page_path(path, base_dir, heading_path=match.heading_path)
     for path in sorted(read_paths):
         sources[path] = source_from_page_path(path, base_dir)
     return list(sources.values())
