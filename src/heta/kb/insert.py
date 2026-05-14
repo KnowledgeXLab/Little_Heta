@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 from heta.config.schema import HetaConfig
-from heta.kb.discovery import collect_insert_files
 from heta.kb.agent import run_merge_agent
-from heta.kb.models import InsertResult, ParsedDocument
+from heta.kb.discovery import collect_insert_files
+from heta.kb.models import InsertProgress, InsertResult, ParsedDocument
 from heta.kb.parser import parse_document
 from heta.kb.pdf_plan import plan_insert_files
 from heta.kb.store import commit_wiki, ensure_wiki_layout, reset_wiki
@@ -24,6 +25,7 @@ def insert_paths(
     *,
     base_dir: Path | None = None,
     enable_pdf_planning: bool = True,
+    on_progress: Callable[[InsertProgress], None] | None = None,
 ) -> InsertResult:
     files = collect_insert_files(targets, config)
     if not files:
@@ -57,10 +59,20 @@ def insert_paths(
             parsed_documents.append(parse_document(source.source_path, source.archived_path, config))
 
         working_wiki = create_working_copy(task_id, base_dir)
+        total_documents = len(parsed_documents)
+        _emit_progress(on_progress, "merge", 1, 0, total_documents, "ready to merge documents")
         added = []
         updated = []
         deleted = []
         for index, document in enumerate(parsed_documents, start=1):
+            _emit_progress(
+                on_progress,
+                "merge",
+                _merge_percent(index - 1, total_documents),
+                index - 1,
+                total_documents,
+                document.source_name,
+            )
             agent_result = run_merge_agent(
                 task_id=f"{task_id}_{index}",
                 documents=[document],
@@ -75,7 +87,23 @@ def insert_paths(
             added.extend(apply_path_map(agent_result["added"], normalize_result.path_map))
             updated.extend(apply_path_map(agent_result["updated"], normalize_result.path_map))
             deleted.extend(apply_path_map(agent_result["deleted"], normalize_result.path_map))
+            _emit_progress(
+                on_progress,
+                "merge",
+                _merge_percent(index, total_documents),
+                index,
+                total_documents,
+                document.source_name,
+            )
 
+        _emit_progress(
+            on_progress,
+            "finalize",
+            99,
+            total_documents,
+            total_documents,
+            "finalizing wiki and vector index",
+        )
         promote_working_copy(task_id, base_dir)
         commit_id = commit_wiki(f"ingest: {', '.join(file.name for file in files)}", base_dir)
         if config.vector_index.enable:
@@ -88,6 +116,7 @@ def insert_paths(
             except Exception:
                 pass
         cleanup_working_copy(task_id, base_dir)
+        _emit_progress(on_progress, "done", 100, total_documents, total_documents, "insert completed")
 
         return InsertResult(
             commit_id=commit_id,
@@ -104,3 +133,30 @@ def insert_paths(
         cleanup_working_copy(task_id, base_dir)
         reset_wiki(base_dir)
         raise
+
+
+def _merge_percent(done: int, total: int) -> int:
+    if total <= 0:
+        return 99
+    return min(99, 1 + int(done / total * 98))
+
+
+def _emit_progress(
+    callback: Callable[[InsertProgress], None] | None,
+    phase: str,
+    percent: int,
+    current: int,
+    total: int,
+    label: str,
+) -> None:
+    if callback is None:
+        return
+    callback(
+        InsertProgress(
+            phase=phase,
+            percent=max(0, min(100, percent)),
+            current=current,
+            total=total,
+            label=label,
+        )
+    )
