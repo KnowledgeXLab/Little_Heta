@@ -8,6 +8,7 @@ from pathlib import Path
 import requests
 
 from heta.config.schema import HetaConfig
+from heta.kb.audio_parser import AUDIO_EXTENSIONS, parse_audio_markdown
 from heta.kb.image_parser import IMAGE_EXTENSIONS, parse_image_markdown
 from heta.kb.models import ParsedDocument
 from heta.kb.text import extract_title
@@ -21,6 +22,8 @@ def parse_document(source_path: Path, archived_path: Path, config: HetaConfig) -
         markdown = _parse_pdf_with_mineru(archived_path, config)
     elif suffix in IMAGE_EXTENSIONS:
         markdown = parse_image_markdown(source_path, archived_path, config)
+    elif suffix in AUDIO_EXTENSIONS:
+        markdown = parse_audio_markdown(source_path, archived_path, config)
     else:
         raise ValueError(f"Unsupported file type: {suffix}")
 

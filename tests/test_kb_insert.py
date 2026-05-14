@@ -147,6 +147,17 @@ def test_collect_insert_files_accepts_common_images(tmp_path: Path) -> None:
     assert files == [image]
 
 
+def test_collect_insert_files_accepts_audio_and_video(tmp_path: Path) -> None:
+    audio = tmp_path / "meeting.mp3"
+    video = tmp_path / "demo.mp4"
+    audio.write_bytes(b"mp3")
+    video.write_bytes(b"mp4")
+
+    files = collect_insert_files([audio, video], _config())
+
+    assert files == [audio, video]
+
+
 def test_collect_directory_skips_workspace(tmp_path: Path) -> None:
     source = tmp_path / "a.md"
     workspace_file = tmp_path / "workspace" / "kb" / "wiki" / "pages" / "old.md"
