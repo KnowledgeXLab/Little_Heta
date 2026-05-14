@@ -15,7 +15,6 @@ def run_wiki_query(
     config: HetaConfig,
     *,
     top_k: int = 5,
-    extra_context: str | None = None,
     base_dir: Path | None = None,
 ) -> QueryResult:
     if not question.strip():
@@ -27,6 +26,5 @@ def run_wiki_query(
         config=config,
         base_dir=base_dir,
         top_k=top_k,
-        extra_context=extra_context,
     )
 

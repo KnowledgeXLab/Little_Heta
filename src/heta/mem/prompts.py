@@ -52,25 +52,65 @@ Format rules:
   If unresolvable, both fields are null.
 """
 
-RECALL_RANKER_PROMPT = """\
-You are a memory-layer ranker for personal memory question answering.
-Compare the retrieved evidence from all memory layers and rank the layers from best to worst for answering the given question.
-Then synthesise a concise answer using the best available evidence.
-Return STRICT JSON only. Do not output markdown or extra text.
+RECALL_RANKING_PROMPT = """\
+You are a memory-layer relevance ranker.
+Given a question and evidence retrieved from multiple memory layers, rank the layers from most to least relevant for answering the question.
+Return STRICT JSON only. Do not output anything outside the JSON object.
 
 Schema:
-{"ranking": ["best_layer", "second_layer", "third_layer"], "answer": "concise answer in the same language as the question", "reason": "one sentence explaining the ranking"}
+{"ranking": ["best_layer", "second_layer", ...], "reason": "one sentence explaining which layer is most relevant and why"}
 
 Available memory layers:
-- raw (L0): original input text preserved verbatim. Exact wording, full context.
-- episode (L1): bounded episodic memories — coherent events, experiences, meetings, plans with participants, time, location, and reason.
-- atomic_fact (L2): compact factual memories — stable attributes, relationships, preferences, outcomes.
+- raw (L0): original input text preserved verbatim.
+- episode (L1): bounded episodic memories — events, experiences, plans.
+- atomic_fact (L2): compact factual memories — attributes, relationships, outcomes.
+- kb_insight: distilled knowledge points extracted from the knowledge base.
 
 Rules:
-- Rank the layer that most directly answers the question first.
-- If a layer has no relevant evidence, rank it last.
-- The answer must be grounded in the evidence; do not invent facts.
-- If none of the layers contain relevant evidence, set answer to "No relevant memory found."
+- Rank based on relevance to the question only — do not attempt to answer the question here.
+- If a layer has no results, rank it last.
+- If no layer has any relevant evidence, return {"ranking": [], "reason": "no relevant evidence found"}.
+"""
+
+RECALL_ANSWER_PROMPT = """\
+You are a strictly evidence-grounded answer generator.
+Your task: answer the question using ONLY the evidence provided. No outside knowledge allowed.
+
+Return STRICT JSON only. Do not output anything outside the JSON object.
+
+Schema (sufficient):   {"answer": "<Markdown answer>", "sufficient": true}
+Schema (insufficient): {"answer": "[INSUFFICIENT]", "sufficient": false}
+
+CRITICAL rules:
+- Use ONLY information explicitly stated in the evidence. Do NOT infer, extrapolate, or fill in details from your training knowledge.
+- If the evidence does not explicitly contain what is needed to answer the question, output {"answer": "[INSUFFICIENT]", "sufficient": false}.
+- "Thematically related" evidence is NOT sufficient. The evidence must directly state the specific information being asked.
+- If the question asks for specific details that are not literally present in the evidence, output [INSUFFICIENT].
+- When in doubt, output [INSUFFICIENT].
+
+Answer format (when sufficient):
+- Write in Markdown with appropriate structure (headers, lists, code blocks).
+- Answer in the SAME language as the question.
+- Do NOT include a Sources or References section.
+"""
+
+KB_INSIGHT_EXTRACTION_PROMPT = """\
+You are a knowledge distillation engine. Given a user question and a KB page, extract concise, reusable insights from the page that are directly useful for answering the question.
+
+Process:
+1. Reason step by step: which parts of the KB content are relevant to the question?
+2. Distill those parts into self-contained insight statements.
+3. Output ONLY the final JSON — no other text.
+
+Schema:
+{"insights": ["insight 1", "insight 2", ...]}
+
+Rules:
+- Each insight must be self-contained and understandable without the original page.
+- Only include insights relevant to the question — filter out unrelated content.
+- LANGUAGE RULE: write insights in the SAME language as the question.
+- Aim for 3–8 insights. Do not pad with trivial or redundant statements.
+- If the page contains nothing relevant, return {"insights": []}.
 """
 
 CONFLICT_JUDGE_PROMPT = """\

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import typer
 
+from heta.cli.ask import ask_command
 from heta.cli.clean import clean_command
+from heta.cli.mem_clean import mem_clean_command
 from heta.cli import init as init_module
 from heta.cli.init import interactive_init
 from heta.cli.insert import insert_command
@@ -38,6 +40,8 @@ def init_command() -> None:
         raise typer.Exit(130) from None
 
 
+app.command("ask")(ask_command)
+app.command("mem-clean")(mem_clean_command)
 app.command("insert")(insert_command)
 app.command("query")(query_command)
 app.command("clean")(clean_command)
