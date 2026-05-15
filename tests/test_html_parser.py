@@ -1,0 +1,173 @@
+from pathlib import Path
+
+from heta.config.schema import HetaConfig, InsertPlanningConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.kb.html_parser import parse_html_markdown
+from heta.kb.parser import parse_document
+from heta.kb.text import extract_title
+
+
+def _config() -> HetaConfig:
+    return HetaConfig(
+        version=1,
+        llm=LLMConfig(provider="qwen", api_key="sk-test"),
+        mineru=MinerUConfig.disabled(),
+        vector_index=VectorIndexConfig(enable=False),
+        insert_planning=InsertPlanningConfig.enabled(),
+    )
+
+
+def test_parse_html_markdown_preserves_structure_and_inline_images(tmp_path: Path) -> None:
+    image = tmp_path / "arch.png"
+    image.write_bytes(b"png")
+    source = tmp_path / "attention.html"
+    archived = tmp_path / "raw" / "2026-05-15_attention.html"
+    archived.parent.mkdir()
+    source.write_text(
+        """
+<!doctype html>
+<html>
+<head>
+  <title>Attention Mechanism</title>
+  <meta name="description" content="A short educational page about attention.">
+  <style>body { color: red; }</style>
+</head>
+<body>
+  <nav>Navigation noise</nav>
+  <h1>Attention Mechanism</h1>
+  <p><strong>Source:</strong> Bahdanau and Vaswani.</p>
+  <h2>Overview</h2>
+  <p>The model focuses on relevant input tokens.</p>
+  <h2>Types</h2>
+  <table><tr><th>Type</th><th>Description</th></tr><tr><td>Self-Attention</td><td>Tokens attend to tokens.</td></tr></table>
+  <h2>Architecture</h2>
+  <p>The Transformer uses multi-head attention.</p>
+  <img src="arch.png" alt="Transformer architecture">
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    archived.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    markdown = parse_html_markdown(source, archived)
+
+    assert extract_title(markdown, "fallback") == "Web Page - Attention Mechanism"
+    assert "### Metadata" not in markdown
+    assert "Raw HTML" not in markdown
+    assert "Navigation noise" not in markdown
+    assert "### Attention Mechanism" in markdown
+    assert "#### Overview" in markdown
+    assert "| Type | Description |" in markdown
+    assert "![Transformer architecture](<../../raw/assets/2026-05-15_attention/img-001.png>)" in markdown
+    assert "Image note: Transformer architecture." in markdown
+    assert (tmp_path / "raw" / "assets" / "2026-05-15_attention" / "img-001.png").exists()
+    manifest = (tmp_path / "raw" / "assets" / "2026-05-15_attention" / "manifest.json").read_text(encoding="utf-8")
+    assert '"original_src": "arch.png"' in manifest
+    assert '"section": "Architecture"' in manifest
+
+
+def test_parse_html_markdown_keeps_remote_images_as_urls(tmp_path: Path) -> None:
+    source = tmp_path / "remote.htm"
+    archived = tmp_path / "raw" / "2026-05-15_remote.htm"
+    archived.parent.mkdir()
+    source.write_text(
+        '<html><body><h1>Remote Page</h1><p>Intro.</p><img src="https://example.com/plot.png" alt="Remote plot"></body></html>',
+        encoding="utf-8",
+    )
+    archived.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    markdown = parse_html_markdown(source, archived)
+
+    assert "![Remote plot](<https://example.com/plot.png>)" in markdown
+    manifest = (tmp_path / "raw" / "assets" / "2026-05-15_remote" / "manifest.json").read_text(encoding="utf-8")
+    assert '"original_src": "https://example.com/plot.png"' in manifest
+    assert '"raw_path": null' in manifest
+
+
+def test_parse_html_markdown_prefers_main_content_and_clean_summary(tmp_path: Path) -> None:
+    source = tmp_path / "wiki.html"
+    archived = tmp_path / "raw" / "2026-05-15_wiki.html"
+    archived.parent.mkdir()
+    source.write_text(
+        """
+<html>
+<head><title>Knowledge graph</title></head>
+<body>
+  <nav>Jump to content</nav>
+  <main>
+    <div class="mw-indicators"><img src="//example.com/protect.svg" alt="Page semi-protected"></div>
+    <table class="ambox"><tr><td>This article has multiple issues.</td></tr></table>
+    <div class="mw-parser-output">
+      <p class="mw-empty-elt"></p>
+      <p>For other uses, see Knowledge graph (disambiguation).</p>
+      <p><b>Knowledge graph</b> is a graph-structured knowledge base used to represent entities, facts, and relationships for retrieval and reasoning systems.</p>
+      <h2>History</h2>
+      <p>The term has been used in several database and semantic web contexts.</p>
+    </div>
+  </main>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    archived.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    markdown = parse_html_markdown(source, archived)
+
+    assert "Jump to content" not in markdown
+    assert "Page semi-protected" not in markdown
+    assert "This article has multiple issues" not in markdown
+    assert "### Knowledge graph" in markdown
+    assert "## Summary\nKnowledge graph is a graph-structured knowledge base" in markdown
+    assert "#### History" in markdown
+
+
+def test_parse_html_markdown_cleans_document_site_shell(tmp_path: Path) -> None:
+    source = tmp_path / "docs.html"
+    archived = tmp_path / "raw" / "2026-05-15_docs.html"
+    archived.parent.mkdir()
+    source.write_text(
+        """
+<html>
+<head>
+  <title>SQL Reference</title>
+  <meta name="description" content="Part&nbsp;I.&nbsp;Tutorial Welcome to the SQL Reference. …">
+</head>
+<body>
+  <header><img alt="Logo" src="logo.svg">Small. Fast. Reliable.</header>
+  <div class="nosearch"><!-- IE hack to prevent disappearing logo --><nav>Docs menu</nav></div>
+  <div id="docContent">
+    <div class="navheader">Previous topic</div>
+    <h1>SQL Reference</h1>
+    <p>SQL Reference explains statements, expressions, and data manipulation concepts for database users.</p>
+    <h2>Statements</h2>
+    <p>The reference lists supported statement syntax.</p>
+  </div>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    archived.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    markdown = parse_html_markdown(source, archived)
+
+    assert "Small. Fast. Reliable" not in markdown
+    assert "IE hack" not in markdown
+    assert "Previous topic" not in markdown
+    assert "### SQL Reference" in markdown
+    assert "#### Statements" in markdown
+    assert "## Summary\nSQL Reference explains statements" in markdown
+
+
+def test_parse_document_accepts_html_branch(tmp_path: Path) -> None:
+    source = tmp_path / "page.html"
+    archived = tmp_path / "2026-05-15_page.html"
+    source.write_text("<html><body><h1>HTML Page</h1><p>Hello.</p></body></html>", encoding="utf-8")
+    archived.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    document = parse_document(source, archived, _config())
+
+    assert document.title == "Web Page - HTML Page"
+    assert document.metadata["extension"] == ".html"
+    assert "### HTML Page" in document.markdown_content
