@@ -122,6 +122,44 @@ def test_parse_html_markdown_prefers_main_content_and_clean_summary(tmp_path: Pa
     assert "#### History" in markdown
 
 
+def test_parse_html_markdown_cleans_document_site_shell(tmp_path: Path) -> None:
+    source = tmp_path / "docs.html"
+    archived = tmp_path / "raw" / "2026-05-15_docs.html"
+    archived.parent.mkdir()
+    source.write_text(
+        """
+<html>
+<head>
+  <title>SQL Reference</title>
+  <meta name="description" content="Part&nbsp;I.&nbsp;Tutorial Welcome to the SQL Reference. …">
+</head>
+<body>
+  <header><img alt="Logo" src="logo.svg">Small. Fast. Reliable.</header>
+  <div class="nosearch"><!-- IE hack to prevent disappearing logo --><nav>Docs menu</nav></div>
+  <div id="docContent">
+    <div class="navheader">Previous topic</div>
+    <h1>SQL Reference</h1>
+    <p>SQL Reference explains statements, expressions, and data manipulation concepts for database users.</p>
+    <h2>Statements</h2>
+    <p>The reference lists supported statement syntax.</p>
+  </div>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    archived.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+    markdown = parse_html_markdown(source, archived)
+
+    assert "Small. Fast. Reliable" not in markdown
+    assert "IE hack" not in markdown
+    assert "Previous topic" not in markdown
+    assert "### SQL Reference" in markdown
+    assert "#### Statements" in markdown
+    assert "## Summary\nSQL Reference explains statements" in markdown
+
+
 def test_parse_document_accepts_html_branch(tmp_path: Path) -> None:
     source = tmp_path / "page.html"
     archived = tmp_path / "2026-05-15_page.html"
