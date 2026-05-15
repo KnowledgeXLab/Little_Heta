@@ -9,7 +9,7 @@ from heta.kb.code_parser import CODE_EXTENSIONS
 from heta.kb.html_parser import HTML_EXTENSIONS
 
 PLAIN_EXTENSIONS = {".md", ".markdown", ".txt"}
-MINERU_EXTENSIONS = {".pdf"}
+MINERU_EXTENSIONS = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".webm", ".mp4"}
 

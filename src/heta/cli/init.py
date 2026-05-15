@@ -149,7 +149,7 @@ def _configure_llm() -> LLMConfig:
 
 def _configure_mineru() -> MinerUConfig:
     console.print()
-    console.print(f"[{WARN}]?[/] Enable PDF parsing with MinerU?")
+    console.print(f"[{WARN}]?[/] Enable PDF and Office parsing with MinerU?")
     console.print(f"  [{HETA}]1[/] Cloud")
     console.print(f"  [{HETA}]2[/] Local sidecar")
     console.print(f"  [{HETA}]3[/] Skip for now")
@@ -284,7 +284,7 @@ def _show_summary(config: HetaConfig) -> None:
     table.add_column()
     table.add_row("config", str(CONFIG_PATH))
     table.add_row("provider", config.llm.provider)
-    table.add_row("pdf", _mineru_summary(config.mineru))
+    table.add_row("mineru docs", _mineru_summary(config.mineru))
     table.add_row("next", f"[bold {HETA}]heta insert ./notes[/] or [bold {HETA}]heta remember \"...\"[/]")
 
     console.print(
