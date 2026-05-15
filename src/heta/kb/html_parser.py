@@ -7,15 +7,16 @@ import re
 import shutil
 from dataclasses import asdict, dataclass
 from datetime import date
+from html import unescape
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag
+from bs4.element import Comment, NavigableString, Tag
 
 HTML_EXTENSIONS = {".html", ".htm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
-NOISE_TAGS = {"script", "style", "nav", "footer", "aside", "iframe", "button", "noscript"}
+NOISE_TAGS = {"script", "style", "nav", "footer", "header", "aside", "iframe", "button", "noscript"}
 NOISE_SELECTORS = (
     "[role='navigation']",
     "[role='banner']",
@@ -27,7 +28,13 @@ NOISE_SELECTORS = (
     ".mw-portlet",
     ".mw-sidebar",
     ".ambox",
+    ".docNav",
+    ".docSearch",
+    ".navfooter",
+    ".navheader",
     ".metadata",
+    ".menu",
+    ".nosearch",
     ".noprint",
     ".navbox",
     ".navbar",
@@ -37,6 +44,7 @@ NOISE_SELECTORS = (
     ".toc",
     ".topicon",
     "#catlinks",
+    "#docSearchForm",
     "#footer",
     "#mw-navigation",
     "#p-lang-btn",
@@ -116,6 +124,8 @@ class _HtmlMarkdownConverter:
         return _compact_blocks("\n".join(part for part in parts if part.strip()))
 
     def _convert_child(self, node) -> str:
+        if isinstance(node, Comment):
+            return ""
         if isinstance(node, NavigableString):
             text = _clean_text(str(node))
             self._remember_text(text)
@@ -281,6 +291,12 @@ def _remove_noise(soup: BeautifulSoup) -> None:
 def _main_content(soup: BeautifulSoup) -> Tag:
     selectors = (
         ".mw-parser-output",
+        "#docContent",
+        "#main-content",
+        "#maincontent",
+        ".document",
+        ".documentwrapper",
+        ".body",
         "article",
         "main",
         "[role='main']",
@@ -322,7 +338,7 @@ def _description(soup: BeautifulSoup) -> str:
 
 
 def _html_summary(body: Tag, title: str, description: str) -> str:
-    if description:
+    if _description_candidate(description):
         return description
     for paragraph in body.find_all("p"):
         if _is_non_content_node(paragraph):
@@ -330,7 +346,17 @@ def _html_summary(body: Tag, title: str, description: str) -> str:
         text = _lead_summary_text(_clean_text(paragraph.get_text(" ", strip=True)))
         if _summary_candidate(text):
             return text[:240].rstrip() + ("..." if len(text) > 240 else "")
-    return ""
+    return description
+
+
+def _description_candidate(text: str) -> bool:
+    if not _summary_candidate(text):
+        return False
+    lowered = text.lower()
+    if "…" in text or lowered.endswith("..."):
+        return False
+    bad_fragments = ("table of contents", "part i.", "newpp limit report")
+    return not any(fragment in lowered for fragment in bad_fragments)
 
 
 def _is_non_content_node(tag: Tag) -> bool:
@@ -406,7 +432,7 @@ def _markdown_row(row: list[str]) -> str:
 
 
 def _clean_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", unescape(text)).strip()
 
 
 def _compact_inline(text: str) -> str:
