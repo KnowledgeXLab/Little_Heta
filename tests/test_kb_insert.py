@@ -4,8 +4,8 @@ import pytest
 
 from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.kb.discovery import collect_insert_files
-from heta.kb.models import FileChange
-from heta.kb.insert import insert_paths
+from heta.kb.models import FileChange, ParsedDocument
+from heta.kb.insert import _ensure_code_raw_links, insert_paths
 from heta.kb.text import frontmatter_page, slugify, summarize
 from heta.kb.wiki import normalize_wiki_pages, repair_broken_wiki_links
 
@@ -128,6 +128,28 @@ def test_insert_multiple_files_runs_agent_sequentially(monkeypatch, tmp_path: Pa
     assert 99 in merge_percents
     assert progress[-1].percent == 100
     assert progress[-1].phase == "done"
+
+
+def test_ensure_code_raw_links_restores_agent_dropped_raw_link(tmp_path: Path) -> None:
+    wiki = tmp_path / "wiki"
+    page = wiki / "pages" / "1-code-demo.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        frontmatter_page("Code - demo.py", "2026-05-15_demo.py", "Summary.", "### File Overview\n- language: python"),
+        encoding="utf-8",
+    )
+    document = ParsedDocument(
+        source_path=tmp_path / "demo.py",
+        archived_path=tmp_path / "raw" / "2026-05-15_demo.py",
+        title="Code - demo.py",
+        markdown_content="",
+        source_name="2026-05-15_demo.py",
+        metadata={"extension": ".py"},
+    )
+
+    _ensure_code_raw_links(wiki, document, [FileChange("added", "Code - demo.py", "pages/1-code-demo.md")])
+
+    assert "[Raw source](<../../raw/2026-05-15_demo.py>)" in page.read_text(encoding="utf-8")
 
 
 def test_pdf_requires_mineru_when_disabled(tmp_path: Path) -> None:
