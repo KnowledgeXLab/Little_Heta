@@ -160,6 +160,29 @@ def test_pdf_requires_mineru_when_disabled(tmp_path: Path) -> None:
         collect_insert_files([source], _config())
 
 
+def test_office_requires_mineru_when_disabled(tmp_path: Path) -> None:
+    source = tmp_path / "deck.pptx"
+    source.write_bytes(b"pptx")
+
+    with pytest.raises(ValueError, match="requires MinerU"):
+        collect_insert_files([source], _config())
+
+
+def test_collect_insert_files_accepts_office_when_mineru_enabled(tmp_path: Path) -> None:
+    files = []
+    for name in ["notes.doc", "notes.docx", "deck.ppt", "deck.pptx", "sheet.xls", "sheet.xlsx"]:
+        file = tmp_path / name
+        file.write_bytes(b"office")
+        files.append(file)
+
+    collected = collect_insert_files(
+        [tmp_path],
+        _config(MinerUConfig(enable=True, provider="cloud", api_key="mineru-token", endpoint=None)),
+    )
+
+    assert collected == sorted(files)
+
+
 def test_collect_insert_files_accepts_common_images(tmp_path: Path) -> None:
     image = tmp_path / "diagram.png"
     image.write_bytes(b"png")

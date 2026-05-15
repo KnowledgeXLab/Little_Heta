@@ -15,7 +15,7 @@ and optional vector indexing.
 
 - Interactive first-time setup with `heta init`
 - Provider configuration for Qwen, ChatGPT, or Gemini
-- Optional MinerU integration for PDF parsing
+- Optional MinerU integration for PDF and Office document parsing
 - Markdown wiki generation under the Little Heta workspace
 - Stable numeric wiki page ids in page filenames
 - Optional SQLite + sqlite-vec wiki chunk index
@@ -60,6 +60,10 @@ Insert one file or a directory:
 ```bash
 heta insert ./docs
 ```
+
+Supported source types include Markdown/text, images, audio/video, HTML,
+common code files, PDF, and Office documents (`.doc`, `.docx`, `.ppt`, `.pptx`,
+`.xls`, `.xlsx`). PDF and Office parsing require MinerU.
 
 Large PDFs are profiled and split before parsing by default. Little Heta gives a
 lightweight PDF profile to a planning agent, validates the returned page ranges,
