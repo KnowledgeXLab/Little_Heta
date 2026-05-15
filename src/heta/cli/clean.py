@@ -86,8 +86,7 @@ def _show_result(summary: CleanSummary) -> None:
     console.print(f"[{OK}]✓[/] Clean completed.")
     console.print(f"[{MUTED}]pages deleted:[/] {summary.deleted_pages}")
     console.print(f"[{MUTED}]vector files deleted:[/] {summary.deleted_vector_files}")
-    if summary.invalidated_memories:
-        console.print(f"[{MUTED}]invalidated memories:[/] {summary.invalidated_memories}")
+    console.print(f"[{MUTED}]invalidated memories:[/] {summary.invalidated_memories}")
     if summary.commit_id:
         console.print(f"[{MUTED}]wiki commit:[/] [bold {HETA}]{summary.commit_id}[/]")
     else:
