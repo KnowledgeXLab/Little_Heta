@@ -9,8 +9,9 @@ from uuid import uuid4
 
 from heta.config.schema import HetaConfig
 from heta.kb.agent import run_merge_agent
+from heta.kb.code_parser import CODE_EXTENSIONS
 from heta.kb.discovery import collect_insert_files
-from heta.kb.models import InsertProgress, InsertResult, ParsedDocument
+from heta.kb.models import FileChange, InsertProgress, InsertResult, ParsedDocument
 from heta.kb.parser import parse_document
 from heta.kb.pdf_plan import plan_insert_files
 from heta.kb.store import commit_wiki, ensure_wiki_layout, reset_wiki
@@ -84,10 +85,14 @@ def insert_paths(
                 raise RuntimeError(f"Agent completed without changing the wiki for: {document.source_name}")
             normalize_result = normalize_wiki_pages(working_wiki)
             repair_broken_wiki_links(working_wiki)
+            normalized_added = apply_path_map(agent_result["added"], normalize_result.path_map)
+            normalized_updated = apply_path_map(agent_result["updated"], normalize_result.path_map)
+            normalized_deleted = apply_path_map(agent_result["deleted"], normalize_result.path_map)
+            _ensure_code_raw_links(working_wiki, document, [*normalized_added, *normalized_updated])
             validate_wiki(working_wiki)
-            added.extend(apply_path_map(agent_result["added"], normalize_result.path_map))
-            updated.extend(apply_path_map(agent_result["updated"], normalize_result.path_map))
-            deleted.extend(apply_path_map(agent_result["deleted"], normalize_result.path_map))
+            added.extend(normalized_added)
+            updated.extend(normalized_updated)
+            deleted.extend(normalized_deleted)
             _emit_progress(
                 on_progress,
                 "merge",
@@ -140,6 +145,25 @@ def _merge_percent(done: int, total: int) -> int:
     if total <= 0:
         return 99
     return min(99, 1 + int(done / total * 98))
+
+
+def _ensure_code_raw_links(wiki_root: Path, document: ParsedDocument, changes: list[FileChange]) -> None:
+    if document.metadata.get("extension") not in CODE_EXTENSIONS:
+        return
+    raw_link = f"[Raw source](<../../raw/{document.source_name}>)"
+    for change in changes:
+        if not change.path.startswith("pages/") or not change.path.endswith(".md"):
+            continue
+        page = wiki_root / change.path
+        if not page.exists():
+            continue
+        text = page.read_text(encoding="utf-8")
+        if raw_link in text:
+            continue
+        if "## Content" not in text:
+            continue
+        updated = text.replace("## Content\n", f"## Content\n\n{raw_link}\n", 1)
+        page.write_text(updated, encoding="utf-8")
 
 
 def _emit_progress(
