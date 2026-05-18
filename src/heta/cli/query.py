@@ -19,7 +19,7 @@ def query_command(
     question: str = typer.Argument(..., help="Question to answer from the Little Heta wiki."),
     top_k: int = typer.Option(5, "--top-k", min=1, max=10, help="Initial vector matches to include."),
 ) -> None:
-    """Ask a read-only question against the Little Heta wiki."""
+    """Ask a question about your inserted documents."""
     config = load_config()
     if config is None:
         console.print(f"[{WARN}]?[/] Little Heta is not initialized.")

@@ -21,7 +21,7 @@ console = Console()
 def clean_command(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
-    """Clean wiki knowledge pages and vector database while keeping raw files."""
+    """Remove generated wiki pages (your original files are kept)."""
     config = load_config()
     if config is None:
         console.print(f"[{WARN}]?[/] Little Heta is not initialized.")

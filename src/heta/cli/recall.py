@@ -38,7 +38,7 @@ def recall_command(
         False, "--debug", "-d", help="Show layer ranking, reason, and scored evidence."
     ),
 ) -> None:
-    """Retrieve and rank memories relevant to a query."""
+    """Look up what Little Heta remembers."""
     config = load_config()
     if config is None:
         console.print(f"[{ERR}]Heta is not initialised. Run `heta init` first.[/]")
