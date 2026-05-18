@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/little-heta/"><img src="https://img.shields.io/pypi/v/little-heta?style=for-the-badge&logo=pypi&logoColor=white&color=3775A9" alt="PyPI"></a>
-  <a href="https://pypi.org/project/little-heta/"><img src="https://img.shields.io/pypi/pyversions/little-heta?style=for-the-badge&logo=python&logoColor=white&color=2B6CB0" alt="Python versions"></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-2B6CB0?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2EA44F?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://knowledgexlab.github.io/"><img src="https://img.shields.io/badge/KnowledgeXLab-Little%20Heta-111827?style=for-the-badge&logo=github&logoColor=white" alt="KnowledgeXLab"></a>
 </p>
