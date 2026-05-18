@@ -26,7 +26,7 @@ def ask_command(
     top_k: int = typer.Option(5, "--top-k", "-k", help="Results per layer / KB vector match."),
     debug: bool = typer.Option(False, "--debug", "-d", help="Print agent steps, memory evidence, and KB output."),
 ) -> None:
-    """Answer a question via an outer agent that decides between memory and the KB."""
+    """Ask anything — answered from your memory and documents."""
     config = load_config()
     if config is None:
         console.print(f"[{ERR}]Heta is not initialised. Run `heta init` first.[/]")

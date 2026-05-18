@@ -16,7 +16,7 @@ console = Console()
 def remember_command(
     text: str = typer.Argument(..., help="Text to remember."),
 ) -> None:
-    """Extract and store memories from a piece of text."""
+    """Save something for Little Heta to remember."""
     config = load_config()
     if config is None:
         console.print(f"[{ERR}]Heta is not initialised. Run `heta init` first.[/]")

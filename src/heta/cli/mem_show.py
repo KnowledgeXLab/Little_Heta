@@ -17,7 +17,7 @@ console = Console()
 
 app = typer.Typer(
     name="mem-show",
-    help="Inspect stored memory contents.",
+    help="Browse the memories Little Heta has stored.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )

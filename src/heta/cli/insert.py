@@ -27,7 +27,7 @@ def insert_command(
         help="File or directory paths to insert. Defaults to the current directory.",
     ),
 ) -> None:
-    """Insert files into the Little Heta Markdown knowledge base."""
+    """Add files to your knowledge base."""
     config = load_config()
     if config is None:
         console.print(f"[{WARN}]?[/] Little Heta is not initialized.")

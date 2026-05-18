@@ -15,7 +15,7 @@ console = Console()
 
 app = typer.Typer(
     name="vector",
-    help="Manage Little Heta wiki vector indexing.",
+    help="Turn document search vector indexing on or off.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )

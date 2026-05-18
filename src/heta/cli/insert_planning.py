@@ -15,7 +15,7 @@ console = Console()
 
 app = typer.Typer(
     name="insert-planning",
-    help="Manage Little Heta insert planning loops.",
+    help="Turn smart insert planning on or off.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )

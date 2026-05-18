@@ -36,7 +36,7 @@ class StatusSummary:
 
 
 def status_command() -> None:
-    """Show the current Little Heta status."""
+    """Show what's set up and how much is stored."""
     try:
         config = load_config()
     except Exception as exc:

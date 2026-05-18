@@ -17,7 +17,7 @@ console = Console()
 def mem_clean_command(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
-    """Wipe all memory (personal + KB cache). Schema is preserved."""
+    """Erase everything Little Heta has remembered."""
     if not yes and not Confirm.ask(
         "Delete all memory data? This cannot be undone.",
         default=False,

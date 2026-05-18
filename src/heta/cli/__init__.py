@@ -36,7 +36,7 @@ def main() -> None:
 
 @app.command("init")
 def init_command() -> None:
-    """Run the first-time Little Heta initialization wizard."""
+    """Set up Little Heta for the first time."""
     try:
         interactive_init()
     except (KeyboardInterrupt, EOFError):
