@@ -29,7 +29,7 @@ heta insert ./docs
 heta ask "What does my knowledge base say about this?"
 ```
 
-`heta init` には LLM API key が必要です。PDF と Office の解析には MinerU を任意で利用できます：https://mineru.net/。
+`heta init` には LLM API key が必要です。PDF と Office の解析には MinerU を任意で利用できます：https://mineru.net/apiManage/docs。
 
 ## Core Concepts
 

@@ -29,7 +29,7 @@ heta insert ./docs
 heta ask "What does my knowledge base say about this?"
 ```
 
-`heta init` requiere una clave API de un LLM. El análisis de PDF y Office puede usar MinerU de forma opcional: https://mineru.net/.
+`heta init` requiere una clave API de un LLM. El análisis de PDF y Office puede usar MinerU de forma opcional: https://mineru.net/apiManage/docs.
 
 ## Core Concepts
 

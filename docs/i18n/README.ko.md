@@ -29,7 +29,7 @@ heta insert ./docs
 heta ask "What does my knowledge base say about this?"
 ```
 
-`heta init`에는 LLM API key가 필요합니다. PDF 및 Office 파싱에는 선택적으로 MinerU를 사용할 수 있습니다: https://mineru.net/.
+`heta init`에는 LLM API key가 필요합니다. PDF 및 Office 파싱에는 선택적으로 MinerU를 사용할 수 있습니다: https://mineru.net/apiManage/docs.
 
 ## Core Concepts
 
