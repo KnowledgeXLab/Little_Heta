@@ -117,7 +117,7 @@ read long pages, and spend tokens rediscovering context it already found before.
 
 Little Heta turns that pile into a persistent agent workspace:
 
-- **Wiki first**: raw files are compiled into stable Markdown pages with
+- **Wiki foundation**: raw files are compiled into stable Markdown pages with
   numeric page ids, clean `[[Wiki Links]]`, and Git history.
 - **Vector Wiki**: each page is chunked by Markdown structure, so `heta query`
   can jump to the right section instead of relying only on sparse `index.md`

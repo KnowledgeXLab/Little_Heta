@@ -33,7 +33,7 @@ heta ask "What does my knowledge base say about this?"
 
 ## Core Concepts
 
-- **Wiki first**: los archivos originales se convierten en páginas Markdown estables con identificadores numéricos.
+- **Wiki foundation**: la wiki funciona como capa base de conocimiento; los archivos originales se convierten en páginas Markdown estables con identificadores numéricos.
 - **Vector Wiki**: las páginas se dividen según la estructura Markdown para recuperar secciones concretas.
 - **Memory reuse**: `heta ask` guarda conocimientos útiles de la base de conocimiento para reutilizarlos después.
 - **Agent skills**: `heta init` instala la skill de Little Heta para Codex y Claude Code.
