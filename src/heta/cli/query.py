@@ -8,14 +8,11 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 
+from heta.cli.branding import HETA, MUTED, WARN
 from heta.config.io import CONFIG_PATH, load_config
 from heta.query import QueryResult, run_wiki_query
 
 console = Console()
-
-HETA = "rgb(52,144,220)"
-MUTED = "rgb(126,146,158)"
-WARN = "rgb(238,183,74)"
 
 
 def query_command(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -70,7 +71,8 @@ OUTER_TOOLS = [
 ]
 
 OUTER_SYSTEM_PROMPT = """\
-You are a personal assistant with access to two information sources via tools.
+You are Little Heta, a knowledge management assistant with access to two
+information sources via tools.
 
 Tools:
 - recall_memory(query): fast search over personal memory (past conversations,
@@ -105,6 +107,7 @@ class SmartQueryResult:
     kb_result: QueryResult | None = None
     written_back: int = 0
     agent_steps: list[str] = field(default_factory=list)
+    usage: dict[str, Any] | None = None
 
 
 @dataclass
@@ -115,6 +118,8 @@ class _State:
     used_memory: bool = False
     used_kb: bool = False
     agent_steps: list[str] = field(default_factory=list)
+    outer_tokens: int = 0
+    started_at: float = field(default_factory=time.time)
 
 
 def smart_query(
@@ -130,6 +135,7 @@ def smart_query(
 
     for _ in range(MAX_OUTER_STEPS):
         resp = _chat(client, model, messages, tools=OUTER_TOOLS, config=config)
+        _record_outer_usage(state, resp)
         msg = resp.choices[0].message
         tool_calls = list(msg.tool_calls or [])
 
@@ -158,6 +164,7 @@ def smart_query(
         {"role": "user", "content": "Step limit reached. Answer with the evidence already gathered, or say you don't know."}
     )
     final = _chat(client, model, messages, tools=None, config=config)
+    _record_outer_usage(state, final)
     return _build_result(state, answer=final.choices[0].message.content or "")
 
 
@@ -176,6 +183,12 @@ def _build_result(state: _State, *, answer: str) -> SmartQueryResult:
         kb_result=state.kb_result,
         written_back=state.written_back,
         agent_steps=list(state.agent_steps),
+        usage={
+            "outer_tokens": state.outer_tokens,
+            "kb_tokens": (state.kb_result.usage or {}).get("tokens", 0) if state.kb_result else 0,
+            "tokens": state.outer_tokens + ((state.kb_result.usage or {}).get("tokens", 0) if state.kb_result else 0),
+            "elapsed_s": round(time.time() - state.started_at, 3),
+        },
     )
 
 
@@ -254,6 +267,13 @@ def _chat(client, model: str, messages: list[dict[str, Any]], *, tools, config: 
     if body:
         kwargs["extra_body"] = body
     return client.chat.completions.create(**kwargs)
+
+
+def _record_outer_usage(state: _State, response: Any) -> None:
+    usage = getattr(response, "usage", None)
+    prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+    completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+    state.outer_tokens += prompt_tokens + completion_tokens
 
 
 def _kb_has_info(answer: str) -> bool:
