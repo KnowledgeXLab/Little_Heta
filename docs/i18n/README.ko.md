@@ -33,7 +33,7 @@ heta ask "What does my knowledge base say about this?"
 
 ## Core Concepts
 
-- **Wiki first**: 원본 파일을 안정적인 번호가 있는 Markdown Wiki로 컴파일합니다.
+- **Wiki foundation**: Wiki는 지식 기반 계층이며, 원본 파일을 안정적인 번호가 있는 Markdown 페이지로 컴파일합니다.
 - **Vector Wiki**: Markdown 구조에 따라 페이지를 나누어 관련 섹션을 더 빠르게 찾습니다.
 - **Memory reuse**: `heta ask`는 비용이 큰 검색 결과를 메모리로 저장하고 이후 질문에서 재사용합니다.
 - **Agent skills**: `heta init`은 Codex와 Claude Code용 Little Heta skill을 자동 설치합니다.

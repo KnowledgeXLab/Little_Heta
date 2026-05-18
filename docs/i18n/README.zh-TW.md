@@ -33,7 +33,7 @@ heta ask "What does my knowledge base say about this?"
 
 ## Core Concepts
 
-- **Wiki first**：原始文件會被編譯成帶穩定編號的 Markdown Wiki。
+- **Wiki foundation**：Wiki 是知識基礎層，原始文件會被編譯成帶穩定編號的 Markdown 頁面。
 - **Vector Wiki**：依照 Markdown 層級切分頁面，讓查詢更容易命中特定章節。
 - **Memory reuse**：`heta ask` 可以把昂貴查詢得到的知識沉澱為記憶，供後續問題重複使用。
 - **Agent skills**：`heta init` 會自動安裝 Codex 和 Claude Code 可使用的 Little Heta skill。

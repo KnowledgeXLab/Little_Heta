@@ -33,7 +33,7 @@ heta ask "What does my knowledge base say about this?"
 
 ## Core Concepts
 
-- **Wiki first**: Rohdateien werden zu stabilen Markdown-Wiki-Seiten mit numerischen IDs.
+- **Wiki foundation**: Das Wiki dient als grundlegende Wissensschicht; Rohdateien werden zu stabilen Markdown-Seiten mit numerischen IDs.
 - **Vector Wiki**: Seiten werden anhand der Markdown-Struktur in Abschnitte geteilt.
 - **Memory reuse**: `heta ask` speichert nützliche Erkenntnisse aus der Wissensbasis zur späteren Wiederverwendung.
 - **Agent skills**: `heta init` installiert den Little-Heta-Skill für Codex und Claude Code.
