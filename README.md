@@ -234,6 +234,12 @@ tests/             unit tests
 pyproject.toml     package metadata and dependencies
 ```
 
+## Community
+
+If Little Heta is useful to you, please consider giving the project a star. If
+you run into bugs, rough edges, or missing workflows, open an issue and tell us
+what happened.
+
 ## License
 
 Little Heta is released under the MIT License. See [LICENSE](LICENSE).
