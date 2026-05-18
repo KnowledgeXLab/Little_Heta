@@ -139,7 +139,7 @@ improved answer accuracy by roughly **1.25x-5x+**, with some cases recovering
 from **0% to 100%** accuracy.
 
 Memory-backed reuse used **82.1% fewer tokens** than index-only wiki query and
-answered **1.14x faster** even in a small-file setting. This gap is expected to
+answered **2.58x faster** in a multi-page comparison setting. This gap is expected to
 grow in larger or messier workspaces, because index-only wiki navigation scales
 with the number and length of pages an agent may need to inspect, while
 memory-backed reuse resolves repeated questions from previously distilled
