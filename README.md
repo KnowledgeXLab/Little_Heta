@@ -67,7 +67,7 @@ You need to prepare:
 
 - An LLM API key for one provider: Qwen, ChatGPT, or Gemini.
 - Optional MinerU access for PDF and Office parsing. Apply or learn more at
-  [MinerU](https://mineru.net/).
+  [MinerU](https://mineru.net/apiManage/docs).
 
 `heta init` writes config and workspace data under:
 
@@ -207,11 +207,14 @@ Runtime data lives under:
 Important paths:
 
 ```text
-~/.heta/heta.yaml                  config
-~/.heta/workspace/kb/raw           original source files
-~/.heta/workspace/kb/wiki          generated Markdown wiki
-~/.heta/workspace/kb/db            local vector database
-~/.heta/skills/heta                portable Little Heta agent skill
+~/.heta/heta.yaml                              config
+~/.heta/workspace/kb/raw                       archived source files
+~/.heta/workspace/kb/wiki/index.md            wiki entry index
+~/.heta/workspace/kb/wiki/pages/              generated Markdown wiki pages
+~/.heta/workspace/kb/wiki/log.md              wiki operation log
+~/.heta/workspace/kb/db/wiki_vectors.sqlite3  local wiki vector database
+~/.heta/workspace/mem/mem.sqlite3             local memory database
+~/.heta/skills/heta/                          portable Little Heta agent skill
 ```
 
 ## Development

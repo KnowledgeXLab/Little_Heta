@@ -29,7 +29,7 @@ heta insert ./docs
 heta ask "What does my knowledge base say about this?"
 ```
 
-`heta init` benötigt einen LLM-API-Schlüssel. Für PDF- und Office-Parsing kann optional MinerU verwendet werden: https://mineru.net/.
+`heta init` benötigt einen LLM-API-Schlüssel. Für PDF- und Office-Parsing kann optional MinerU verwendet werden: https://mineru.net/apiManage/docs.
 
 ## Core Concepts
 

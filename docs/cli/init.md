@@ -17,5 +17,5 @@ What it does:
 Prepare before running:
 
 - Your LLM provider API key.
-- Optional MinerU API key from https://mineru.net/.
+- Optional MinerU API key from https://mineru.net/apiManage/docs.
 

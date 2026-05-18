@@ -29,7 +29,7 @@ heta insert ./docs
 heta ask "What does my knowledge base say about this?"
 ```
 
-`heta init` 需要你準備一個 LLM API key。PDF 和 Office 解析可選接入 MinerU：https://mineru.net/。
+`heta init` 需要你準備一個 LLM API key。PDF 和 Office 解析可選接入 MinerU：https://mineru.net/apiManage/docs。
 
 ## Core Concepts
 
