@@ -37,8 +37,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-
-[dependency-groups]
-dev = [
-    "pytest==9.0.2",
-]
