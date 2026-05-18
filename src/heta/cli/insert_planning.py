@@ -7,15 +7,11 @@ from dataclasses import replace
 import typer
 from rich.console import Console
 
+from heta.cli.branding import HETA, MUTED, OK, WARN
 from heta.config.io import CONFIG_PATH, load_config, save_config
 from heta.config.schema import InsertPlanningConfig
 
 console = Console()
-
-HETA = "rgb(52,144,220)"
-MUTED = "rgb(126,146,158)"
-OK = "rgb(76,196,142)"
-WARN = "rgb(238,183,74)"
 
 app = typer.Typer(
     name="insert-planning",

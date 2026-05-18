@@ -11,16 +11,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from heta.cli.branding import brand_line
+from heta.cli.branding import HETA, MUTED, WARN, brand_line
 from heta.config.io import CONFIG_PATH, load_config
 from heta.config.schema import HetaConfig, MinerUConfig
 from heta.kb import paths
 
 console = Console()
 
-HETA = "rgb(52,144,220)"
-MUTED = "rgb(126,146,158)"
-WARN = "rgb(238,183,74)"
 BAR_FULL = "█"
 BAR_EMPTY = "░"
 BAR_WIDTH = 20

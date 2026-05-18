@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from heta.cli.ask import ask_command
+from heta.cli.branding import apply_typer_theme
 from heta.cli.clean import clean_command
 from heta.cli.mem_clean import mem_clean_command
 from heta.cli.mem_show import app as mem_show_app
@@ -17,6 +18,8 @@ from heta.cli.recall import recall_command
 from heta.cli.remember import remember_command
 from heta.cli.status import status_command
 from heta.cli.vector import app as vector_app
+
+apply_typer_theme()
 
 app = typer.Typer(
     name="heta",

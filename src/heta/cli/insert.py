@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
 
+from heta.cli.branding import HETA, MUTED, OK, WARN
 from heta.config.io import CONFIG_PATH, load_config
 from heta.kb import paths
 from heta.kb.discovery import collect_insert_files, supported_extensions
@@ -18,11 +19,6 @@ from heta.kb.models import InsertProgress
 from heta.kb.pdf_plan import PDF_PAGE_THRESHOLD, estimate_pdf_pages
 
 console = Console()
-
-HETA = "rgb(52,144,220)"
-MUTED = "rgb(126,146,158)"
-OK = "rgb(76,196,142)"
-WARN = "rgb(238,183,74)"
 
 
 def insert_command(

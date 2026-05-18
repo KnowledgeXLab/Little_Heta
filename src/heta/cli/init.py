@@ -14,19 +14,13 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
-from heta.cli.branding import APP_TAGLINE, brand_line
+from heta.cli.branding import APP_TAGLINE, HETA, MUTED, OK, WARN, brand_line
 from heta.config.io import CONFIG_PATH, save_config
 from heta.config.schema import HetaConfig, InsertPlanningConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.providers.llm import validate_llm
 from heta.providers.mineru import validate_mineru_cloud, validate_mineru_local
 
 console = Console()
-
-HETA = "rgb(52,144,220)"
-HETA_DARK = "rgb(31,91,156)"
-MUTED = "rgb(126,146,158)"
-OK = "rgb(76,196,142)"
-WARN = "rgb(238,183,74)"
 
 LLM_PROVIDERS = {1: "qwen", 2: "chatgpt", 3: "gemini"}
 MINERU_OPTIONS = {1: "cloud", 2: "local", 3: "skip"}

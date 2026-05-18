@@ -9,14 +9,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from heta.cli.branding import HETA, MUTED, WARN
 from heta.mem.db import get_connection, init_db
 from heta.mem.paths import db_path
 
 console = Console()
-
-HETA = "rgb(52,144,220)"
-MUTED = "rgb(126,146,158)"
-WARN = "rgb(238,183,74)"
 
 app = typer.Typer(
     name="mem-show",
