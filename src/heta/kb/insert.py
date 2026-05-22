@@ -58,7 +58,16 @@ def insert_paths(
         )
         parsed_documents: list[ParsedDocument] = []
         for source in prepared_sources:
-            parsed_documents.append(parse_document(source.source_path, source.archived_path, config))
+            parsed_documents.append(
+                parse_document(
+                    source.source_path,
+                    source.archived_path,
+                    config,
+                    original_name=source.original_name or source.source_path.name,
+                    page_offset=(source.page_start - 1) if source.page_start else 0,
+                    base_dir=base_dir,
+                )
+            )
 
         working_wiki = create_working_copy(task_id, base_dir)
         total_documents = len(parsed_documents)
@@ -66,6 +75,7 @@ def insert_paths(
         added = []
         updated = []
         deleted = []
+        skipped_documents: list[str] = []
         for index, document in enumerate(parsed_documents, start=1):
             _emit_progress(
                 on_progress,
@@ -82,7 +92,16 @@ def insert_paths(
                 config=config,
             )
             if not (agent_result["added"] or agent_result["updated"] or agent_result["deleted"]):
-                raise RuntimeError(f"Agent completed without changing the wiki for: {document.source_name}")
+                skipped_documents.append(document.source_name)
+                _emit_progress(
+                    on_progress,
+                    "merge",
+                    _merge_percent(index, total_documents),
+                    index,
+                    total_documents,
+                    document.source_name,
+                )
+                continue
             normalize_result = normalize_wiki_pages(working_wiki)
             repair_broken_wiki_links(working_wiki)
             normalized_added = apply_path_map(agent_result["added"], normalize_result.path_map)
@@ -136,6 +155,7 @@ def insert_paths(
             raw_files=raw_files,
             planned_pdf_parts=sum(plan.parts for plan in pdf_plans if plan.enabled),
             invalidated_memories=invalidated,
+            skipped_documents=skipped_documents,
         )
     except BaseException:
         for raw in raw_files:
