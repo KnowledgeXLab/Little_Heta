@@ -241,6 +241,10 @@ def run_merge_agent(
     }
 
 
+_LLM_TIMEOUT_SECONDS = 900
+_LLM_MAX_RETRIES = 3
+
+
 def _get_client(config: HetaConfig) -> tuple[OpenAI, str]:
     # API keys are intentionally read only from ~/.heta/heta.yaml, which is
     # created by `heta init`. Model choice stays fixed to fast defaults here.
@@ -250,18 +254,27 @@ def _get_client(config: HetaConfig) -> tuple[OpenAI, str]:
             OpenAI(
                 api_key=config.llm.api_key,
                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-                timeout=300,
+                timeout=_LLM_TIMEOUT_SECONDS,
+                max_retries=_LLM_MAX_RETRIES,
             ),
             FAST_AGENT_MODELS["qwen"],
         )
     if provider == "chatgpt":
-        return OpenAI(api_key=config.llm.api_key, timeout=300), FAST_AGENT_MODELS["chatgpt"]
+        return (
+            OpenAI(
+                api_key=config.llm.api_key,
+                timeout=_LLM_TIMEOUT_SECONDS,
+                max_retries=_LLM_MAX_RETRIES,
+            ),
+            FAST_AGENT_MODELS["chatgpt"],
+        )
     if provider == "gemini":
         return (
             OpenAI(
                 api_key=config.llm.api_key,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                timeout=300,
+                timeout=_LLM_TIMEOUT_SECONDS,
+                max_retries=_LLM_MAX_RETRIES,
             ),
             FAST_AGENT_MODELS["gemini"],
         )
@@ -298,32 +311,39 @@ def _chat_completion(
 
 
 def _system_prompt() -> str:
-    return """You are running Little Heta KB merge ingest.
+    return """You are running Little Heta KB ingest.
 
-Your job is to absorb parsed source documents into the Markdown wiki working copy.
+You turn parsed source documents into pages of a Markdown wiki working copy.
+You have TWO distinct jobs and you must not confuse them:
+
+  1. TRANSCRIBE — `## Content` is a faithful reproduction of the source.
+  2. ORGANIZE  — `## Summary`, `## Related Pages`, `[[Wiki Links]]`, and the
+                 `index.md` entry are where you synthesize, condense, and connect.
+
+Synthesis belongs ONLY in job 2. Inside `## Content` you reproduce; you do not
+summarize, paraphrase, or "clean up".
+
 You must use tools to inspect and edit files. Do not claim completion until the
-working copy contains the final wiki changes.
-In normal ingest, you receive one source document at a time. Treat that document
-as the current unit of truth and preserve its concrete details in the wiki.
+working copy contains the final wiki changes. In normal ingest you receive one
+source document at a time; treat that document as the current unit of truth.
 
 Required workflow:
 1. read_page("index.md") to understand the current wiki.
 2. Identify up to 5 related pages from index.md for each source document.
 3. read_page each related page before deciding whether it is genuinely related.
-4. For each source document, either create one complete new page or edit one
-   existing page that already covers the same topic. When editing an existing
-   page, add or extend a source-specific section unless the current source is
-   genuinely duplicate.
-5. Update index.md with one entry per created or substantially updated page.
-   The entry must use exactly this format:
+4. For each source document, either create one new page or edit one existing
+   page that already covers the same topic (see "Editing an existing page" below).
+5. Update index.md with one entry per created or substantially updated page,
+   in exactly this format:
    - [id] [[Title]] (pages/file-name.md) — one-line summary
-   If a page does not have a numeric filename prefix yet, omit the id and use
-   the semantic path you created. The system will assign stable numeric
-   filename prefixes and normalize index.md after you finish.
+   If a page has no numeric filename prefix yet, omit the id and use the
+   semantic path you created. The system assigns stable numeric prefixes and
+   normalizes index.md afterwards.
 6. Maintain bidirectional [[Wiki Links]] only when the relationship is real.
 7. append_log with a concise summary of created, updated, linked, or deleted pages.
 
-Page format:
+Page format — every page MUST have exactly these four level-2 sections, in
+this order:
 ---
 title: Title
 sources: [source_filename]
@@ -331,33 +351,81 @@ updated: YYYY-MM-DD
 ---
 
 ## Summary
-One paragraph.
+
+One short paragraph that overviews the page. This is the only place where you
+condense the document. The vector index uses Summary as embedding context for
+every chunk on the page, so keep it tight and informative.
 
 ## Content
-Full self-contained content. Preserve the source document's definitions,
-examples, procedures, named entities, important lists, formulas, constraints,
-and concrete facts. Do not replace the source with a high-level summary.
+
+A faithful transcription of the source document. Apply the Content rules and
+the Heading rules below.
 
 ## Related Pages
+
 - [[Related Title]]
 
+(Write "- None yet" if there are no related pages.)
+
 ## Source
+
 - source_filename
 
-If there are no related pages, write "- None yet".
+Content rules — transcription, not summary:
+- Reproduce the source's body text. Keep its wording. Do NOT paraphrase,
+  condense, rewrite, or "clean up" sentences.
+- Keep every table, every list, every formula, every code block, every
+  image link (`![...](...)`), every number, every named entity — as they
+  appear in the source.
+- Preserve the source's section order and hierarchy.
+- Lines beginning with `Source:` that follow an image or a table are
+  provenance annotations injected at parse time (they include the original
+  filename, page number, and bbox). Reproduce them verbatim on the line(s)
+  immediately after the figure or table they describe; never drop, edit, or
+  re-order them.
+- Wiki pages may be long. Prefer completeness over brevity. Never truncate, and
+  never use "...", "etc.", or "(omitted)" to stand in for source content.
+- You have a large output budget; do not self-shorten because this is a "wiki".
+- Before finishing, verify every section, table, list, image, and `Source:`
+  annotation from the source is present inside `## Content`.
+
+Heading rules inside `## Content` — REQUIRED for the vector index:
+The vector index splits each page into chunks at level-3-or-deeper headings
+(`###`, `####`, ...) inside `## Content`, and uses the breadcrumb of those
+headings as the chunk's `heading_path`. Correct headings = correct retrieval.
+- Represent the source document's internal structure using `###` and deeper
+  headings. Reuse the source's own section/subsection titles as the heading
+  text whenever possible.
+- NEVER emit a level-1 (`#`) or level-2 (`##`) heading inside `## Content`.
+  A stray `##` inside the body would also truncate the Content section. If
+  the source has top-level headings, demote them: the source's shallowest
+  heading becomes `###`, the next level `####`, and so on. This preserves the
+  source's relative hierarchy while staying at level 3+.
+- Keep headings outside fenced code blocks. Never let a body line accidentally
+  start with `#` outside a code fence.
+- Faithful sub-headings serve BOTH fidelity and retrieval: they preserve
+  structure AND give the vector index cleaner, better-scoped chunks. Use them.
+
+Editing an existing page:
+- Only edit an existing page when it genuinely covers the same topic as the
+  new source.
+- Append the new source's content as its own clearly-titled `###` subsection,
+  transcribed under the Content and Heading rules above.
+- Do NOT rewrite, trim, summarize, or re-order the page's existing content in
+  order to "merge" the new source in. Add; never digest.
+- Add the new source filename to the `sources:` frontmatter list and to the
+  `## Source` section.
+- Use exact old_str when calling edit_page.
 
 Rules:
 - Paths are limited to index.md, log.md, and pages/*.md.
-- One source document becomes one complete wiki page unless it clearly belongs in an existing page.
-- Every source document must be represented in page content and in the Source list.
-- Merge overlapping sources only when they describe the same thing; even then,
-  keep new details from the current source.
-- Do not discard details just because they seem minor or because the page already
-  has a summary.
+- Every source document must be represented inside `## Content` and listed in
+  `## Source`.
+- Two sources may share a page only when they describe the same thing; even
+  then, keep each source's content under its own `###` subsection.
 - Do not invent or maintain wiki ids, chunk ids, or numeric page prefixes.
 - Keep [[Wiki Links]] semantic, e.g. [[HetaGen]], never [[1-HetaGen]].
 - Always read a page before editing it.
-- Use exact old_str when calling edit_page.
 - Keep log.md append-only.
 - Every page must include frontmatter fields: title, sources, updated.
 - index.md must include every created page with its pages/*.md path and summary.

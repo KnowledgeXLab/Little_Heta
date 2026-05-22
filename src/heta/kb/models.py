@@ -32,6 +32,7 @@ class InsertResult:
     raw_files: list[Path]
     planned_pdf_parts: int = 0
     invalidated_memories: int = 0
+    skipped_documents: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

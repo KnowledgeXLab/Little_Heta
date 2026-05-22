@@ -130,6 +130,49 @@ def test_insert_multiple_files_runs_agent_sequentially(monkeypatch, tmp_path: Pa
     assert progress[-1].phase == "done"
 
 
+def test_insert_continues_when_agent_makes_no_wiki_changes(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def run_merge_agent(*, task_id, documents, root_dir, config):
+        document = documents[0]
+        calls.append(document.source_name)
+        if "beta" in document.source_name:
+            return {"added": [], "updated": [], "deleted": []}
+
+        pages = root_dir / "pages"
+        pages.mkdir(parents=True, exist_ok=True)
+        page = pages / f"{slugify(document.title)}.md"
+        page.write_text(
+            frontmatter_page(
+                document.title,
+                document.source_name,
+                summarize(document.markdown_content),
+                document.markdown_content,
+            ),
+            encoding="utf-8",
+        )
+        return {"added": [FileChange("added", document.title, f"pages/{page.name}")], "updated": [], "deleted": []}
+
+    monkeypatch.setattr("heta.kb.insert.run_merge_agent", run_merge_agent)
+    first = tmp_path / "alpha.md"
+    second = tmp_path / "beta.md"
+    third = tmp_path / "gamma.md"
+    first.write_text("# Alpha\n\nFirst details.", encoding="utf-8")
+    second.write_text("# Beta\n\nSecond details.", encoding="utf-8")
+    third.write_text("# Gamma\n\nThird details.", encoding="utf-8")
+
+    result = insert_paths([first, second, third], _config(), base_dir=tmp_path)
+
+    wiki = tmp_path / "workspace" / "kb" / "wiki"
+    assert len(calls) == 3
+    assert [change.path for change in result.added] == ["pages/1-alpha.md", "pages/2-gamma.md"]
+    assert result.skipped_documents == [calls[1]]
+    assert (wiki / "pages" / "1-alpha.md").exists()
+    assert not (wiki / "pages" / "2-beta.md").exists()
+    assert (wiki / "pages" / "2-gamma.md").exists()
+    assert "Skipped no-op merge" not in (wiki / "log.md").read_text(encoding="utf-8")
+
+
 def test_ensure_code_raw_links_restores_agent_dropped_raw_link(tmp_path: Path) -> None:
     wiki = tmp_path / "wiki"
     page = wiki / "pages" / "1-code-demo.md"
