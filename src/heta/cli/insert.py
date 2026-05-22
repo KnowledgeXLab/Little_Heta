@@ -130,6 +130,11 @@ def _show_result(result) -> None:
     if result.invalidated_memories:
         console.print(f"[{MUTED}]invalidated memories:[/] {result.invalidated_memories}")
 
+    if result.skipped_documents:
+        console.print(f"\n[{WARN}]Documents not organized into wiki pages:[/]")
+        for source_name in result.skipped_documents:
+            console.print(f"[{WARN}]![/] {source_name}")
+
 
 def _insert_progress() -> Progress:
     return Progress(

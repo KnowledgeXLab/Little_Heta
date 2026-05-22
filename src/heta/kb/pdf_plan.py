@@ -19,7 +19,7 @@ from heta.kb.text import slugify
 
 PDF_PAGE_THRESHOLD = 80
 PDF_PART_MAX_PAGES = 20
-PDF_PROFILE_MAX_CHARS = 12000
+PDF_PROFILE_MAX_CHARS = 60000
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,7 @@ class PreparedSource:
     page_start: int | None = None
     page_end: int | None = None
     metadata_path: Path | None = None
+    original_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,13 +72,25 @@ def plan_insert_files(
 
     for file in files:
         if file.suffix.lower() != ".pdf":
-            prepared.append(PreparedSource(source_path=file, archived_path=_save_raw_file(file, base_dir)))
+            prepared.append(
+                PreparedSource(
+                    source_path=file,
+                    archived_path=_save_raw_file(file, base_dir),
+                    original_name=file.name,
+                )
+            )
             continue
 
         page_count = estimate_pdf_pages(file)
         should_split = enable_pdf_planning and page_count > PDF_PAGE_THRESHOLD
         if not should_split:
-            prepared.append(PreparedSource(source_path=file, archived_path=_save_raw_file(file, base_dir)))
+            prepared.append(
+                PreparedSource(
+                    source_path=file,
+                    archived_path=_save_raw_file(file, base_dir),
+                    original_name=file.name,
+                )
+            )
             plans.append(PdfPlan(source_path=file, page_count=page_count, enabled=False, parts=1))
             continue
 
@@ -133,7 +146,7 @@ def build_pdf_profile(path: Path, *, page_count: int | None = None) -> PdfProfil
         filename=path.name,
         page_count=total_pages,
         metadata=_metadata(reader),
-        outline=outline[:80],
+        outline=outline,
         page_samples=samples,
         heading_candidates=heading_candidates[:80],
     )
@@ -219,6 +232,7 @@ def split_pdf_to_raw_parts(
                 page_start=unit.start_page,
                 page_end=unit.end_page,
                 metadata_path=metadata,
+                original_name=source.name,
             )
         )
 
@@ -228,26 +242,52 @@ def split_pdf_to_raw_parts(
 def _planning_system_prompt() -> str:
     return """You are Little Heta's PDF split planning agent.
 
-You do not read the full PDF. You only receive a lightweight profile containing
-metadata, outline/bookmarks, sampled page text, heading-like lines, and page
-count. Decide how to split the PDF into smaller source units.
+You do not read the full PDF. You receive a lightweight profile containing
+metadata, outline/bookmarks (titled leaf entries with real page numbers),
+sampled page text, heading-like lines, and page count. Decide how to split
+the PDF into smaller source units.
+
+Each unit MUST be at most 20 pages.
+
+Critical: do NOT propose oversized units expecting the system to "split them
+later". The system's fallback splitter chops oversized units into mechanical
+20-page windows that all share your title, which destroys the outline's
+semantic boundaries you saw in the profile. Pick the right granularity
+yourself.
 
 Return JSON only with this shape:
 {
   "document_type": "textbook | paper_collection | report | slides | manual | scanned_book | mixed",
   "split_strategy": "outline | fixed_page_window | chapter | section | fallback",
   "units": [
-    {"title": "Chapter 1: Introduction", "start_page": 1, "end_page": 32}
+    {"title": "Section 1.2: Introduction", "start_page": 12, "end_page": 19}
   ]
 }
 
-Rules:
+Granularity rules — use the FINEST outline level whose units fit ≤20 pages:
+- Compute the average page span between consecutive outline entries:
+  `avg = page_count / len(outline)`.
+- If `avg ≤ 20`: use outline entries as unit boundaries directly. Each unit
+  spans from one entry's page to the page before the next entry's page (or
+  to the document end for the last entry). Inherit the entry's title.
+- If individual entries are very small (`avg < 5`): you may merge 2–4
+  consecutive entries into one unit to reach a more useful size, but the
+  merged title MUST reflect the range (e.g. include the first and last
+  entry's identifiers, or the chapter they share). Never let the merged
+  unit exceed 20 pages.
+- If `avg > 20`: the outline is too coarse. Subdivide each outline entry
+  into 20-page fixed windows that inherit the entry's title plus a part
+  suffix (e.g. "Chapter 3 (pages 60-80)").
+- For paper collections: each paper is one unit (title = paper title). If a
+  paper exceeds 20 pages, subdivide that paper alone into 20-page windows.
+- For slides, scanned books, or empty/unreliable outline: use fixed 20-page
+  windows. Set split_strategy to "fixed_page_window".
+
+Hard rules:
 - Page numbers are 1-based and inclusive.
-- Prefer outline/chapter/section boundaries when reliable.
-- For paper collections, try title/reference-like boundaries only if samples are clear.
-- For reports, prefer top-level sections.
-- For slides, scanned books, or weak evidence, use fixed page windows.
-- Keep each unit small enough for downstream parsing. The system will further split oversized units.
+- Every unit MUST be ≤20 pages. A unit larger than 20 pages will be
+  rejected and re-split mechanically.
+- Cover [1, page_count] without gaps and without overlap.
 - Do not invent details that are absent from the profile.
 """
 
@@ -352,10 +392,17 @@ def _fixed_range_units(start_page: int, end_page: int, *, max_pages: int) -> lis
 
 
 def _extract_outline(reader: PdfReader) -> list[dict[str, Any]]:
+    """Collect leaf outline entries (titled bookmarks with a real page target).
+
+    Folder/group bookmarks (e.g. collapsed parents like "正文前资料") have a null
+    page destination and are useless for split planning; we skip them so they
+    don't crowd out the real leaves under the OUTLINE_MAX cap.
+    """
     outline: list[dict[str, Any]] = []
+    OUTLINE_MAX = 500
 
     def visit(items: Any, depth: int = 0) -> None:
-        if len(outline) >= 120:
+        if len(outline) >= OUTLINE_MAX:
             return
         if isinstance(items, list):
             for item in items:
@@ -364,10 +411,13 @@ def _extract_outline(reader: PdfReader) -> list[dict[str, Any]]:
         title = getattr(items, "title", None)
         if title:
             try:
-                page = reader.get_destination_page_number(items) + 1
+                page_number = reader.get_destination_page_number(items)
             except Exception:
-                page = None
-            outline.append({"title": str(title), "page": page, "depth": depth})
+                page_number = None
+            if page_number is None:
+                # Folder/group bookmark — keep walking siblings but do not record.
+                return
+            outline.append({"title": str(title), "page": page_number + 1, "depth": depth})
             return
         try:
             for child in items:
