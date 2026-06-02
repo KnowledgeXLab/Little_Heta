@@ -105,17 +105,17 @@ def _show_result(result) -> None:
     console.print(f"[{OK}]✓[/] Insert completed.")
 
     if result.added:
-        console.print("\n新增页面:")
+        console.print("\nAdded pages:")
         for change in result.added:
             console.print(f"[{OK}]+[/] {change.title} [{MUTED}]({_absolute_page_path(change.path)})[/]")
 
     if result.updated:
-        console.print("\n更新页面:")
+        console.print("\nUpdated pages:")
         for change in result.updated:
             console.print(f"[{WARN}]~[/] {change.title} [{MUTED}]({_absolute_page_path(change.path)})[/]")
 
     if result.deleted:
-        console.print("\n删除页面:")
+        console.print("\nDeleted pages:")
         for change in result.deleted:
             console.print(f"[red]-[/] {change.title} [{MUTED}]({_absolute_page_path(change.path)})[/]")
 
