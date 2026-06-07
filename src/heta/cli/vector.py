@@ -10,6 +10,9 @@ from rich.console import Console
 from heta.cli.branding import HETA, MUTED, OK, WARN
 from heta.config.io import CONFIG_PATH, load_config, save_config
 from heta.config.schema import VectorIndexConfig
+from heta.kb import paths
+from heta.kb.models import FileChange
+from heta.kb.vector_index import sync_wiki_vector_index
 
 console = Console()
 
@@ -39,6 +42,23 @@ def vector_status() -> None:
     config = _require_config()
     state = "enabled" if config.vector_index.enable else "disabled"
     console.print(f"[{MUTED}]vector index:[/] [bold {HETA}]{state}[/]")
+
+
+@app.command("sync")
+def vector_sync() -> None:
+    """Rebuild the wiki vector index from current wiki pages."""
+    config = _require_config()
+    page_files = sorted(paths.pages_dir().glob("*.md"))
+    changes = [
+        FileChange("updated", page.stem, str(page.relative_to(paths.wiki_dir())))
+        for page in page_files
+    ]
+    try:
+        sync_wiki_vector_index(changes=changes, config=config)
+    except Exception as exc:
+        console.print(f"[{WARN}]?[/] Vector index sync failed: {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"[{OK}]✓[/] vector index synced ({len(changes)} pages)")
 
 
 def _set_vector_index(enable: bool) -> None:

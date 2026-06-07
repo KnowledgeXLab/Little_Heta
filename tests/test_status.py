@@ -27,6 +27,7 @@ def test_status_summary_counts_kb_and_wiki_pages(tmp_path: Path) -> None:
     assert summary.llm_provider == "qwen"
     assert summary.mineru == "local (http://127.0.0.1:8000)"
     assert summary.insert_planning == "enabled"
+    assert summary.dynamic_insert == "disabled"
     assert summary.kb_files == 2
     assert summary.wiki_pages == 1
     assert summary.heta_space == tmp_path
@@ -40,6 +41,7 @@ def test_status_summary_handles_missing_config_and_workspace(tmp_path: Path) -> 
     assert summary.llm_provider == "not configured"
     assert summary.mineru == "not configured"
     assert summary.insert_planning == "not configured"
+    assert summary.dynamic_insert == "not configured"
     assert summary.kb_files == 0
     assert summary.wiki_pages == 0
     assert summary.heta_used_bytes == 0
