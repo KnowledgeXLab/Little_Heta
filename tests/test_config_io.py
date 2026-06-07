@@ -1,7 +1,14 @@
 from pathlib import Path
 
 from heta.config.io import load_config, save_config
-from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import (
+    DynamicInsertConfig,
+    InsertPlanningConfig,
+    HetaConfig,
+    LLMConfig,
+    MinerUConfig,
+    VectorIndexConfig,
+)
 
 
 def test_save_and_load_config(tmp_path: Path) -> None:
@@ -12,6 +19,7 @@ def test_save_and_load_config(tmp_path: Path) -> None:
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig.enabled(),
         insert_planning=InsertPlanningConfig.enabled(),
+        dynamic_insert=DynamicInsertConfig.disabled(),
     )
 
     save_config(config, path)
@@ -39,6 +47,8 @@ vector_index:
   enable: true
 insert_planning:
   enable: true
+dynamic_insert:
+  enable: false
 """,
         encoding="utf-8",
     )
@@ -52,6 +62,7 @@ insert_planning:
     assert loaded.llm.multimodal_api_key == "sk-test"
     assert loaded.llm.embedding_model == "text-embedding-v4"
     assert loaded.llm.embedding_api_key == "sk-test"
+    assert loaded.dynamic_insert.enable is False
 
 
 def test_load_config_accepts_custom_llm_profile(tmp_path: Path) -> None:
@@ -83,6 +94,8 @@ vector_index:
   enable: true
 insert_planning:
   enable: true
+dynamic_insert:
+  enable: true
 """,
         encoding="utf-8",
     )
@@ -98,6 +111,7 @@ insert_planning:
     assert loaded.llm.multimodal_api_key == "sk-mm"
     assert loaded.llm.embedding_api_key == "sk-embedding"
     assert loaded.llm.embedding_model == "custom-embedding"
+    assert loaded.dynamic_insert.enable is True
 
 
 def test_custom_config_requires_embedding_fields(tmp_path: Path) -> None:
@@ -121,6 +135,8 @@ vector_index:
   enable: true
 insert_planning:
   enable: true
+dynamic_insert:
+  enable: false
 """,
         encoding="utf-8",
     )
@@ -163,3 +179,31 @@ vector_index:
         assert "insert_planning" in str(exc)
     else:
         raise AssertionError("missing insert_planning should fail")
+
+
+def test_load_config_defaults_missing_dynamic_insert_to_disabled(tmp_path: Path) -> None:
+    path = tmp_path / ".heta" / "heta.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """
+version: 1
+llm:
+  provider: qwen
+  api_key: sk-test
+mineru:
+  enable: false
+  provider:
+  api_key:
+  endpoint:
+vector_index:
+  enable: true
+insert_planning:
+  enable: true
+""",
+        encoding="utf-8",
+    )
+
+    loaded = load_config(path)
+
+    assert loaded is not None
+    assert loaded.dynamic_insert.enable is False

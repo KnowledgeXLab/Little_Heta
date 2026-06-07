@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 LLMProvider = Literal["qwen", "chatgpt", "gemini", "custom"]
@@ -198,12 +198,29 @@ class InsertPlanningConfig:
 
 
 @dataclass(frozen=True)
+class DynamicInsertConfig:
+    enable: bool
+
+    @classmethod
+    def disabled(cls) -> "DynamicInsertConfig":
+        return cls(enable=False)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DynamicInsertConfig":
+        enable = data.get("enable")
+        if not isinstance(enable, bool):
+            raise ValueError("Invalid dynamic_insert enable flag in config.")
+        return cls(enable=enable)
+
+
+@dataclass(frozen=True)
 class HetaConfig:
     version: int
     llm: LLMConfig
     mineru: MinerUConfig
     vector_index: VectorIndexConfig
     insert_planning: InsertPlanningConfig
+    dynamic_insert: DynamicInsertConfig = field(default_factory=DynamicInsertConfig.disabled)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "HetaConfig":
@@ -214,6 +231,7 @@ class HetaConfig:
         mineru = data.get("mineru")
         vector_index = data.get("vector_index")
         insert_planning = data.get("insert_planning")
+        dynamic_insert = data.get("dynamic_insert", {"enable": False})
         if not isinstance(llm, dict):
             raise ValueError("Missing LLM config.")
         if not isinstance(mineru, dict):
@@ -222,12 +240,15 @@ class HetaConfig:
             raise ValueError("Missing vector_index config.")
         if not isinstance(insert_planning, dict):
             raise ValueError("Missing insert_planning config.")
+        if not isinstance(dynamic_insert, dict):
+            raise ValueError("Invalid dynamic_insert config.")
         return cls(
             version=1,
             llm=LLMConfig.from_dict(llm),
             mineru=MinerUConfig.from_dict(mineru),
             vector_index=VectorIndexConfig.from_dict(vector_index),
             insert_planning=InsertPlanningConfig.from_dict(insert_planning),
+            dynamic_insert=DynamicInsertConfig.from_dict(dynamic_insert),
         )
 
     def to_dict(self) -> dict[str, Any]:

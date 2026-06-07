@@ -28,6 +28,7 @@ class StatusSummary:
     llm_provider: str
     mineru: str
     insert_planning: str
+    dynamic_insert: str
     kb_files: int
     wiki_pages: int
     heta_space: Path
@@ -54,6 +55,7 @@ def build_status_summary(config: HetaConfig | None, base_dir: Path | None = None
         llm_provider=config.llm.provider if config else "not configured",
         mineru=_mineru_summary(config.mineru) if config else "not configured",
         insert_planning=_enabled_summary(config.insert_planning.enable) if config else "not configured",
+        dynamic_insert=_enabled_summary(config.dynamic_insert.enable) if config else "not configured",
         kb_files=_count_files(paths.raw_dir(base_dir)),
         wiki_pages=_count_markdown_pages(paths.pages_dir(base_dir)),
         heta_space=heta_space,
@@ -70,6 +72,7 @@ def _show_status(summary: StatusSummary, has_config: bool) -> None:
     table.add_row("Model provider:", summary.llm_provider)
     table.add_row("MinerU:", summary.mineru)
     table.add_row("Insert planning:", summary.insert_planning)
+    table.add_row("Dynamic insert:", summary.dynamic_insert)
     table.add_row("KB files:", str(summary.kb_files))
     table.add_row("Wiki pages:", str(summary.wiki_pages))
 
