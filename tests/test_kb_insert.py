@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
+from heta.config.schema import (
+    DynamicInsertConfig,
+    InsertPlanningConfig,
+    HetaConfig,
+    LLMConfig,
+    MinerUConfig,
+    VectorIndexConfig,
+)
 from heta.kb.discovery import collect_insert_files
 from heta.kb.models import FileChange, ParsedDocument
 from heta.kb.insert import _ensure_code_raw_links, insert_paths
@@ -10,13 +17,14 @@ from heta.kb.text import frontmatter_page, slugify, summarize
 from heta.kb.wiki import normalize_wiki_pages, repair_broken_wiki_links
 
 
-def _config(mineru: MinerUConfig | None = None) -> HetaConfig:
+def _config(mineru: MinerUConfig | None = None, *, dynamic_insert: bool = True) -> HetaConfig:
     return HetaConfig(
         version=1,
         llm=LLMConfig(provider="qwen", api_key="sk-test"),
         mineru=mineru or MinerUConfig.disabled(),
         vector_index=VectorIndexConfig(enable=False),
         insert_planning=InsertPlanningConfig.enabled(),
+        dynamic_insert=DynamicInsertConfig(enable=dynamic_insert),
     )
 
 
@@ -128,6 +136,61 @@ def test_insert_multiple_files_runs_agent_sequentially(monkeypatch, tmp_path: Pa
     assert 99 in merge_percents
     assert progress[-1].percent == 100
     assert progress[-1].phase == "done"
+
+
+def test_insert_defaults_to_static_pages(monkeypatch, tmp_path: Path) -> None:
+    def fail_agent(**kwargs):
+        raise AssertionError("dynamic agent should not run in static insert mode")
+
+    monkeypatch.setattr("heta.kb.insert.run_merge_agent", fail_agent)
+    monkeypatch.setattr(
+        "heta.kb.static_insert.generate_summary",
+        lambda *, document, config: f"Summary for {document.title}.",
+    )
+    source = tmp_path / "manual.md"
+    source.write_text("# Main Heading\n\n## Sub Heading\n\nBody text.", encoding="utf-8")
+
+    result = insert_paths([source], _config(dynamic_insert=False), base_dir=tmp_path)
+
+    wiki = tmp_path / "workspace" / "kb" / "wiki"
+    page = wiki / "pages" / "1-main-heading.md"
+    text = page.read_text(encoding="utf-8")
+    assert result.added[0].path == "pages/1-main-heading.md"
+    assert "Summary for Main Heading." in text
+    assert "### Main Heading" in text
+    assert "#### Sub Heading" in text
+    assert "## Related Pages\n\n- None yet" in text
+    assert "- " + result.raw_files[0].name in text
+    assert "[[Main Heading]]" in (wiki / "index.md").read_text(encoding="utf-8")
+    assert "Created static page: Main Heading" in (wiki / "log.md").read_text(encoding="utf-8")
+
+
+def test_insert_reports_vector_sync_error_without_rolling_back(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "heta.kb.static_insert.generate_summary",
+        lambda *, document, config: f"Summary for {document.title}.",
+    )
+    monkeypatch.setattr(
+        "heta.kb.insert.sync_wiki_vector_index",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("embedding unavailable")),
+    )
+    source = tmp_path / "manual.md"
+    source.write_text("# Main Heading\n\nBody text.", encoding="utf-8")
+    config = HetaConfig(
+        version=1,
+        llm=LLMConfig(provider="qwen", api_key="sk-test"),
+        mineru=MinerUConfig.disabled(),
+        vector_index=VectorIndexConfig(enable=True),
+        insert_planning=InsertPlanningConfig.enabled(),
+        dynamic_insert=DynamicInsertConfig.disabled(),
+    )
+
+    result = insert_paths([source], config, base_dir=tmp_path)
+
+    page = tmp_path / "workspace" / "kb" / "wiki" / "pages" / "1-main-heading.md"
+    assert result.commit_id
+    assert page.exists()
+    assert result.vector_index_error == "embedding unavailable"
 
 
 def test_insert_continues_when_agent_makes_no_wiki_changes(monkeypatch, tmp_path: Path) -> None:

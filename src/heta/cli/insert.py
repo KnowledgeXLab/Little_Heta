@@ -79,6 +79,7 @@ def _show_plan(files: list[Path], config, *, pdf_planning: bool) -> None:
     table.add_column(style=f"bold {HETA}")
     table.add_column()
     table.add_row("files", str(len(files)))
+    table.add_row("mode", "dynamic" if config.dynamic_insert.enable else "static")
     table.add_row("mineru", "enabled" if config.mineru.enable else "disabled")
     table.add_row("pdf planning", "enabled" if pdf_planning else "disabled")
     table.add_row("workspace", str(paths.workspace_root()))
@@ -129,6 +130,11 @@ def _show_result(result) -> None:
 
     if result.invalidated_memories:
         console.print(f"[{MUTED}]invalidated memories:[/] {result.invalidated_memories}")
+
+    if result.vector_index_error:
+        console.print(f"[{WARN}]![/] Vector index sync failed; wiki pages were still committed.")
+        console.print(f"[{MUTED}]  Reason:[/] {result.vector_index_error}")
+        console.print(f"[{MUTED}]  Next:[/] rerun [bold {HETA}]heta vector sync[/] after fixing the issue.")
 
     if result.skipped_documents:
         console.print(f"\n[{WARN}]Documents not organized into wiki pages:[/]")

@@ -14,6 +14,7 @@ from heta.kb.discovery import collect_insert_files
 from heta.kb.models import FileChange, InsertProgress, InsertResult, ParsedDocument
 from heta.kb.parser import parse_document
 from heta.kb.pdf_plan import plan_insert_files
+from heta.kb.static_insert import write_static_page
 from heta.kb.store import commit_wiki, ensure_wiki_layout, reset_wiki
 from heta.kb.vector_index import sync_wiki_vector_index
 from heta.kb.wiki import apply_path_map, normalize_wiki_pages, repair_broken_wiki_links, validate_wiki
@@ -85,12 +86,19 @@ def insert_paths(
                 total_documents,
                 document.source_name,
             )
-            agent_result = run_merge_agent(
-                task_id=f"{task_id}_{index}",
-                documents=[document],
-                root_dir=working_wiki,
-                config=config,
-            )
+            if config.dynamic_insert.enable:
+                agent_result = run_merge_agent(
+                    task_id=f"{task_id}_{index}",
+                    documents=[document],
+                    root_dir=working_wiki,
+                    config=config,
+                )
+            else:
+                agent_result = write_static_page(
+                    root_dir=working_wiki,
+                    document=document,
+                    config=config,
+                )
             if not (agent_result["added"] or agent_result["updated"] or agent_result["deleted"]):
                 skipped_documents.append(document.source_name)
                 _emit_progress(
@@ -131,6 +139,7 @@ def insert_paths(
         )
         promote_working_copy(task_id, base_dir)
         commit_id = commit_wiki(f"ingest: {', '.join(file.name for file in files)}", base_dir)
+        vector_index_error = None
         if config.vector_index.enable:
             try:
                 sync_wiki_vector_index(
@@ -138,8 +147,8 @@ def insert_paths(
                     config=config,
                     base_dir=base_dir,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                vector_index_error = str(exc) or exc.__class__.__name__
         cleanup_working_copy(task_id, base_dir)
 
         from heta.mem.kb_invalidate import invalidate_by_paths
@@ -156,6 +165,7 @@ def insert_paths(
             planned_pdf_parts=sum(plan.parts for plan in pdf_plans if plan.enabled),
             invalidated_memories=invalidated,
             skipped_documents=skipped_documents,
+            vector_index_error=vector_index_error,
         )
     except BaseException:
         for raw in raw_files:

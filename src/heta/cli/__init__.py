@@ -7,6 +7,7 @@ import typer
 from heta.cli.ask import ask_command
 from heta.cli.branding import apply_typer_theme
 from heta.cli.clean import clean_command
+from heta.cli.dynamic_insert import app as dynamic_insert_app
 from heta.cli.mem_clean import mem_clean_command
 from heta.cli.mem_show import app as mem_show_app
 from heta.cli import init as init_module
@@ -54,6 +55,7 @@ app.command("remember")(remember_command)
 app.command("recall")(recall_command)
 app.command("skill")(skill_command)
 app.command("status")(status_command)
+app.add_typer(dynamic_insert_app)
 app.add_typer(insert_planning_app)
 app.add_typer(vector_app)
 app.add_typer(mem_show_app)

@@ -19,6 +19,7 @@ from heta.cli.branding import APP_TAGLINE, HETA, MUTED, OK, WARN, brand_line
 from heta.config.io import CONFIG_PATH, save_config
 from heta.config.schema import (
     DEFAULT_LLM_PROFILES,
+    DynamicInsertConfig,
     HetaConfig,
     InsertPlanningConfig,
     LLMConfig,
@@ -64,6 +65,7 @@ def _run_interactive_init() -> None:
         mineru=MinerUConfig.disabled(),
         vector_index=VectorIndexConfig.enabled(),
         insert_planning=InsertPlanningConfig.enabled(),
+        dynamic_insert=DynamicInsertConfig.disabled(),
     )
     save_config(partial_config)
     console.print(f"[{HETA}]→[/] wrote {CONFIG_PATH}")
@@ -75,6 +77,7 @@ def _run_interactive_init() -> None:
         mineru=mineru_config,
         vector_index=VectorIndexConfig.enabled(),
         insert_planning=InsertPlanningConfig.enabled(),
+        dynamic_insert=DynamicInsertConfig.disabled(),
     )
     save_config(final_config)
 
@@ -368,6 +371,7 @@ def _show_summary(config: HetaConfig) -> None:
     table.add_row("config", str(CONFIG_PATH))
     table.add_row("provider", config.llm.provider)
     table.add_row("mineru docs", _mineru_summary(config.mineru))
+    table.add_row("dynamic insert", "disabled")
     table.add_row("next", f"[bold {HETA}]heta insert ./notes[/] or [bold {HETA}]heta remember \"...\"[/]")
 
     console.print(
