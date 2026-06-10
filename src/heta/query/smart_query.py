@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Literal
 
 from heta.config.schema import HetaConfig
@@ -18,6 +20,12 @@ from heta.query.models import QueryResult
 logger = logging.getLogger(__name__)
 
 MAX_OUTER_STEPS = 5
+TEXT_TOOL_CALL_RE = re.compile(r"<tool_call\b(?P<body>.*?)</tool_call>", re.IGNORECASE | re.DOTALL)
+TEXT_TOOL_FUNCTION_RE = re.compile(r"<function\s*=\s*['\"]?(?P<name>[A-Za-z_][\w]*)['\"]?\s*>", re.IGNORECASE)
+TEXT_TOOL_PARAMETER_RE = re.compile(
+    r"<parameter\s*=\s*['\"]?(?P<name>[A-Za-z_][\w]*)['\"]?\s*>(?P<value>.*?)(?=(?:<parameter\s*=|</function>|</tool_call>|$))",
+    re.IGNORECASE | re.DOTALL,
+)
 
 _NO_INFO_PHRASES = [
     "no relevant",
@@ -140,7 +148,9 @@ def smart_query(
         tool_calls = list(msg.tool_calls or [])
 
         if not tool_calls:
-            return _build_result(state, answer=msg.content or "")
+            tool_calls = _parse_text_tool_calls(msg.content or "")
+            if not tool_calls:
+                return _build_result(state, answer=msg.content or "")
 
         assistant_msg: dict[str, Any] = {"role": "assistant"}
         if msg.content:
@@ -204,6 +214,36 @@ def _exec_tool(tool_call: Any, config: HetaConfig, top_k: int, base_dir: Path | 
     if name == "query_kb":
         return _exec_query_kb(str(args.get("question", "")), config, top_k, base_dir, state)
     return f"error: unknown tool {name}"
+
+
+def _parse_text_tool_calls(content: str) -> list[Any]:
+    """Parse XML-ish tool calls emitted as assistant text by some compatible APIs."""
+    calls: list[Any] = []
+    for index, match in enumerate(TEXT_TOOL_CALL_RE.finditer(content), start=1):
+        body = match.group("body")
+        function_match = TEXT_TOOL_FUNCTION_RE.search(body)
+        if function_match is None:
+            continue
+        name = function_match.group("name")
+        if name not in {"recall_memory", "query_kb"}:
+            continue
+        args = {
+            parameter.group("name"): _strip_text_tool_markup(parameter.group("value"))
+            for parameter in TEXT_TOOL_PARAMETER_RE.finditer(body)
+        }
+        if not args:
+            continue
+        calls.append(
+            SimpleNamespace(
+                id=f"text_tool_call_{index}",
+                function=SimpleNamespace(name=name, arguments=json.dumps(args, ensure_ascii=False)),
+            )
+        )
+    return calls
+
+
+def _strip_text_tool_markup(value: str) -> str:
+    return re.sub(r"</?(?:function|parameter)[^>]*>", "", value).strip()
 
 
 def _exec_recall_memory(query: str, config: HetaConfig, top_k: int, state: _State) -> str:
