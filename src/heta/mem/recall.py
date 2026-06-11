@@ -116,16 +116,44 @@ def _rank(
         extra=body,
     )
 
-    # Phase B: generate grounded answer (or [INSUFFICIENT])
+    # Phase B: generate grounded answer from the top-ranked useful layers.
+    answer_evidence = _select_ranked_evidence(evidence, ranking, max_layers=2)
     answer, sufficient = _generate_grounded_answer(
         query=query,
-        evidence_text=evidence_text,
+        evidence_text=format_evidence(answer_evidence),
         client=client,
         model=model,
         extra=body,
     )
 
     return ranking, answer, reason, sufficient
+
+
+def _select_ranked_evidence(
+    evidence: list[LayerEvidence],
+    ranking: list[str],
+    *,
+    max_layers: int = 2,
+) -> list[LayerEvidence]:
+    """Return the top-ranked non-empty layers for answer generation."""
+    by_layer = {layer_ev.layer: layer_ev for layer_ev in evidence}
+    selected: list[LayerEvidence] = []
+    seen: set[str] = set()
+
+    for layer in ranking:
+        layer_ev = by_layer.get(layer)
+        if layer_ev is None or not layer_ev.items or layer in seen:
+            continue
+        selected.append(layer_ev)
+        seen.add(layer)
+        if len(selected) >= max(1, max_layers):
+            return selected
+
+    if selected:
+        return selected
+
+    # If the ranker fails or returns only empty/unknown layers, preserve prior behavior.
+    return evidence
 
 
 def _rank_layers(
