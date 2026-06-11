@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from heta.config.schema import HetaConfig
@@ -13,7 +14,7 @@ from heta.mem.client import build_client, build_embedding_client
 from heta.mem.db import get_connection, init_db
 from heta.mem.embedder import embed_text, fact_text
 from heta.mem.l1_extractor import extract_episodes, resolve_when_ts
-from heta.mem.l2_conflict import detect_conflicts
+from heta.mem.l2_conflict import detect_conflicts_batch
 from heta.mem.l2_extractor import extract_facts
 from heta.mem.models import L0Turn, L1Episodic, L2Semantic, MemoryMeta, Session
 from heta.mem.paths import db_path, ensure_mem_dir
@@ -53,8 +54,15 @@ def remember(text: str, config: HetaConfig) -> RememberResult:
 
     # --- extract ---
     t0 = time.time()
-    raw_episodes = extract_episodes(llm_client, llm_model, text, config, session_ts=now)
-    raw_facts = extract_facts(llm_client, llm_model, text, config, session_ts=now)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        episodes_future = executor.submit(
+            extract_episodes, llm_client, llm_model, text, config, now
+        )
+        facts_future = executor.submit(
+            extract_facts, llm_client, llm_model, text, config, now
+        )
+        raw_episodes = episodes_future.result()
+        raw_facts = facts_future.result()
 
     # --- persist L1 ---
     l1_count = 0
@@ -88,26 +96,33 @@ def remember(text: str, config: HetaConfig) -> RememberResult:
 
     # --- persist L2 (semantic conflict resolution) ---
     l2_count = 0
+    prepared_facts = []
     for raw_fact in raw_facts:
-        memory_id = str(uuid.uuid4())
         subject = str(raw_fact.get("subject", ""))
         predicate = str(raw_fact.get("predicate", ""))
         object_ = str(raw_fact.get("object", ""))
         raw_object_type = raw_fact.get("object_type", "literal")
         object_type_val = raw_object_type[0] if isinstance(raw_object_type, list) else str(raw_object_type)
         ft = fact_text(subject, predicate, object_)
+        prepared_facts.append((raw_fact, subject, predicate, object_, object_type_val, ft))
 
-        ids_to_deprecate, embedding = detect_conflicts(
-            conn=conn,
-            new_fact_text=ft,
-            llm_client=llm_client,
-            llm_model=llm_model,
-            emb_client=emb_client,
-            emb_model=emb_model,
-            config=config,
-            session_id=session_id,
-        )
+    conflict_results = detect_conflicts_batch(
+        conn=conn,
+        new_fact_texts=[item[5] for item in prepared_facts],
+        llm_client=llm_client,
+        llm_model=llm_model,
+        emb_client=emb_client,
+        emb_model=emb_model,
+        config=config,
+        session_id=session_id,
+    ) if prepared_facts else []
 
+    for prepared, conflict_result in zip(prepared_facts, conflict_results, strict=True):
+        if conflict_result.duplicate_of is not None:
+            continue
+
+        raw_fact, subject, predicate, object_, object_type_val, ft = prepared
+        memory_id = str(uuid.uuid4())
         meta = MemoryMeta(
             memory_id=memory_id,
             memory_type="L2",
@@ -131,11 +146,11 @@ def remember(text: str, config: HetaConfig) -> RememberResult:
 
         # insert new meta + fact first so FK reference is valid
         meta_store.insert_meta(conn, meta)
-        for old_id in ids_to_deprecate:
+        for old_id in conflict_result.ids_to_deprecate:
             l2_store.expire_fact(conn, old_id, now)
             meta_store.deprecate(conn, old_id, memory_id)
         l2_store.insert_fact(conn, fact_record)
-        l2_store.insert_fact_embedding(conn, memory_id, embedding)
+        l2_store.insert_fact_embedding(conn, memory_id, conflict_result.embedding)
         l2_count += 1
 
     session_store.close_session(conn, session_id, int(time.time()))
