@@ -4,17 +4,27 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
 
 from heta.config.schema import HetaConfig
-from heta.mem.client import extra_body
+from heta.mem.client import EMBEDDING_DIM, extra_body
 from heta.mem.embedder import embed_text
 from heta.mem.l2_store import search_similar_facts
-from heta.mem.prompts import CONFLICT_JUDGE_PROMPT
+from heta.mem.prompts import BATCH_CONFLICT_JUDGE_PROMPT, CONFLICT_JUDGE_PROMPT
 
 logger = logging.getLogger(__name__)
+
+MIN_CONFLICT_CANDIDATE_SCORE = 0.60
+
+
+@dataclass(frozen=True)
+class ConflictResult:
+    ids_to_deprecate: list[str]
+    embedding: list[float]
+    duplicate_of: str | None = None
 
 
 def detect_conflicts(
@@ -27,16 +37,121 @@ def detect_conflicts(
     config: HetaConfig,
     top_k: int = 10,
     session_id: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], list[float]]:
     """Return memory_ids of existing facts that the new fact contradicts."""
-    embedding = embed_text(emb_client, emb_model, new_fact_text)
-    candidates = search_similar_facts(conn, embedding, top_k=top_k, exclude_session_id=session_id)
+    result = detect_conflicts_batch(
+        conn=conn,
+        new_fact_texts=[new_fact_text],
+        llm_client=llm_client,
+        llm_model=llm_model,
+        emb_client=emb_client,
+        emb_model=emb_model,
+        config=config,
+        top_k=top_k,
+        session_id=session_id,
+    )[0]
+    return result.ids_to_deprecate, result.embedding
 
-    if not candidates:
-        return [], embedding
 
-    ids_to_deprecate = _judge(llm_client, llm_model, new_fact_text, candidates, config)
-    return ids_to_deprecate, embedding
+def detect_conflicts_batch(
+    conn: Any,
+    new_fact_texts: list[str],
+    llm_client: OpenAI,
+    llm_model: str,
+    emb_client: OpenAI,
+    emb_model: str,
+    config: HetaConfig,
+    top_k: int = 10,
+    session_id: str | None = None,
+    min_candidate_score: float = MIN_CONFLICT_CANDIDATE_SCORE,
+) -> list[ConflictResult]:
+    """Detect contradicted facts for multiple new fact texts with one judge call."""
+    if not new_fact_texts:
+        return []
+
+    embeddings = _embed_texts(emb_client, emb_model, new_fact_texts)
+    filtered_candidates: dict[int, list[dict]] = {}
+
+    for index, embedding in enumerate(embeddings):
+        candidates = search_similar_facts(
+            conn,
+            embedding,
+            top_k=top_k,
+            exclude_session_id=session_id,
+        )
+        candidates = _filter_candidates(candidates, min_candidate_score)
+        duplicate = _find_exact_duplicate(new_fact_texts[index], candidates)
+        if duplicate is not None:
+            filtered_candidates[index] = [duplicate]
+            continue
+        if candidates:
+            filtered_candidates[index] = candidates
+
+    duplicates = {
+        index: candidates[0]["memory_id"]
+        for index, candidates in filtered_candidates.items()
+        if candidates and _same_fact_text(new_fact_texts[index], candidates[0].get("fact_text", ""))
+    }
+    judge_candidates = {
+        index: candidates
+        for index, candidates in filtered_candidates.items()
+        if index not in duplicates
+    }
+
+    deprecations: dict[int, list[str]] = {}
+    if judge_candidates:
+        deprecations = _judge_batch(
+            llm_client,
+            llm_model,
+            new_fact_texts,
+            judge_candidates,
+            config,
+        )
+
+    return [
+        ConflictResult(
+            ids_to_deprecate=deprecations.get(index, []),
+            embedding=embedding,
+            duplicate_of=duplicates.get(index),
+        )
+        for index, embedding in enumerate(embeddings)
+    ]
+
+
+def _find_exact_duplicate(new_fact_text: str, candidates: list[dict]) -> dict | None:
+    for candidate in candidates:
+        if _same_fact_text(new_fact_text, candidate.get("fact_text", "")):
+            return candidate
+    return None
+
+
+def _same_fact_text(left: str, right: str) -> bool:
+    return " ".join(left.split()).casefold() == " ".join(str(right).split()).casefold()
+
+
+def _filter_candidates(candidates: list[dict], min_candidate_score: float) -> list[dict]:
+    filtered = []
+    for candidate in candidates:
+        score = _candidate_score(candidate)
+        if score >= min_candidate_score:
+            enriched = dict(candidate)
+            enriched["score"] = score
+            filtered.append(enriched)
+    return filtered
+
+
+def _candidate_score(candidate: dict) -> float:
+    distance = float(candidate.get("distance", 0.0) or 0.0)
+    return 1.0 / (1.0 + max(distance, 0.0))
+
+
+def _embed_texts(client: OpenAI, model: str, texts: list[str]) -> list[list[float]]:
+    response = client.embeddings.create(
+        model=model,
+        input=texts,
+        dimensions=EMBEDDING_DIM,
+    )
+    return [item.embedding for item in response.data]
 
 
 def _judge(
@@ -69,11 +184,48 @@ def _judge(
     return _parse_judge_response(raw)
 
 
+def _judge_batch(
+    client: OpenAI,
+    model: str,
+    new_fact_texts: list[str],
+    candidates_by_index: dict[int, list[dict]],
+    config: HetaConfig,
+) -> dict[int, list[str]]:
+    user_msg = _batch_user_message(new_fact_texts, candidates_by_index)
+    kwargs: dict = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": BATCH_CONFLICT_JUDGE_PROMPT},
+            {"role": "user", "content": user_msg},
+        ],
+        "temperature": 0.0,
+    }
+    body = extra_body(config)
+    if body:
+        kwargs["extra_body"] = body
+
+    response = client.chat.completions.create(**kwargs)
+    raw = (response.choices[0].message.content or "").strip()
+    return _parse_batch_judge_response(raw)
+
+
+def _batch_user_message(new_fact_texts: list[str], candidates_by_index: dict[int, list[dict]]) -> str:
+    blocks: list[str] = []
+    for index in sorted(candidates_by_index):
+        candidate_lines = "\n".join(
+            f'- id: "{candidate["memory_id"]}"  score: {candidate.get("score", 0):.3f}  fact: "{candidate["fact_text"]}"'
+            for candidate in candidates_by_index[index]
+        )
+        blocks.append(
+            f'New fact index: {index}\n'
+            f'New fact: "{new_fact_texts[index]}"\n'
+            f'Existing candidate facts:\n{candidate_lines}'
+        )
+    return "\n\n".join(blocks)
+
+
 def _parse_judge_response(raw: str) -> list[str]:
-    text = raw
-    if text.startswith("```"):
-        lines = text.splitlines()
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    text = _strip_json_fence(raw)
     try:
         data = json.loads(text)
         result = data.get("deprecate", [])
@@ -81,3 +233,35 @@ def _parse_judge_response(raw: str) -> list[str]:
     except (json.JSONDecodeError, AttributeError):
         logger.warning("Failed to parse conflict judge response: %s", raw[:200])
         return []
+
+
+def _parse_batch_judge_response(raw: str) -> dict[int, list[str]]:
+    text = _strip_json_fence(raw)
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, AttributeError):
+        logger.warning("Failed to parse batch conflict judge response: %s", raw[:200])
+        return {}
+
+    result = data.get("deprecate", [])
+    if not isinstance(result, list):
+        return {}
+
+    parsed: dict[int, list[str]] = {}
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("new_fact_index")
+        memory_ids = item.get("memory_ids", [])
+        if not isinstance(index, int) or not isinstance(memory_ids, list):
+            continue
+        parsed[index] = [memory_id for memory_id in memory_ids if isinstance(memory_id, str)]
+    return parsed
+
+
+def _strip_json_fence(raw: str) -> str:
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    return text

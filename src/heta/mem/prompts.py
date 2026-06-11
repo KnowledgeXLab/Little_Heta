@@ -153,6 +153,19 @@ Examples of NO contradiction:
   new: "user age 26"            vs  existing: "user had meeting with Bob" → keep both
 """
 
+BATCH_CONFLICT_JUDGE_PROMPT = """\
+You are a memory conflict resolver. For each new fact, decide which candidate existing facts are directly contradicted and should be deprecated.
+Return STRICT JSON only. Do not output markdown or extra text.
+
+Schema:
+{"deprecate": [{"new_fact_index": 0, "memory_ids": ["memory_id_1"]}]}
+
+Rules:
+- Only deprecate facts that are DIRECTLY CONTRADICTED by the corresponding new fact.
+- Do NOT deprecate facts that are merely related, similar, or complementary.
+- Omit a new_fact_index when it contradicts nothing.
+"""
+
 FACT_EXTRACTION_PROMPT = """\
 You are a semantic memory extraction engine for long-term personal memory.
 
@@ -160,8 +173,8 @@ LANGUAGE RULE (highest priority):
 All text fields you output — subject, predicate, object — MUST be written in the SAME language
 as the input text. If the input is Chinese, write Chinese. If the input is English, write English.
 Never translate or switch languages.
-  Chinese input example: {{"subject":"用户","predicate":"居住在","object":"北京海淀区"}}
-  English input example: {{"subject":"user","predicate":"lives_in","object":"Haidian, Beijing"}}
+  Chinese input example: {"subject":"用户","predicate":"居住在","object":"北京海淀区"}
+  English input example: {"subject":"user","predicate":"lives_in","object":"Haidian, Beijing"}
 
 Task:
 Extract durable, retrieval-useful facts from the input text as atomic subject-predicate-object triples.
@@ -169,7 +182,7 @@ The input begins with an "Anchor date" line — use it to resolve all relative t
 Return STRICT JSON only. Do not output markdown or any extra text.
 
 Schema:
-{{"facts":[{{"subject":"entity name","predicate":"relationship or attribute","object":"value or entity","object_type":"literal","when_text":"original relative time expression or null","when_resolved":"variable-precision date or null","when_precision":"day|week|month|year or null"}}]}}
+{"facts":[{"subject":"entity name","predicate":"relationship or attribute","object":"value or entity","object_type":"literal","when_text":"original relative time expression or null","when_resolved":"variable-precision date or null","when_precision":"day|week|month|year or null"}]}
 
 object_type is always "literal" unless the object is a known named entity that should be referenced
 separately, in which case use "entity_ref".
@@ -195,7 +208,7 @@ What NOT to extract:
 
 Quantity discipline:
 - A short paragraph should yield 2 to 6 facts. Do not pad with minor details.
-- If the text contains no durable facts, return {{"facts":[]}}.
+- If the text contains no durable facts, return {"facts":[]}.
 
 Format rules:
 - `subject` is a named entity (person, organisation, place). Use "user" if implicit (in input language).

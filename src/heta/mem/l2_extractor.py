@@ -47,19 +47,33 @@ def _fmt_date(ts: int | None) -> str:
 
 
 def _parse_facts(raw: str) -> list[dict[str, Any]]:
+    for text in _json_candidates(raw):
+        try:
+            data = json.loads(text)
+            facts = data.get("facts", [])
+            if not isinstance(facts, list):
+                return []
+            return [
+                f for f in facts
+                if isinstance(f, dict) and all(k in f for k in ("subject", "predicate", "object"))
+            ]
+        except (json.JSONDecodeError, AttributeError):
+            continue
+
+    logger.warning("Failed to parse fact extraction response: %s", raw[:200])
+    return []
+
+
+def _json_candidates(raw: str) -> list[str]:
     text = raw.strip()
     if text.startswith("```"):
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    try:
-        data = json.loads(text)
-        facts = data.get("facts", [])
-        if not isinstance(facts, list):
-            return []
-        return [
-            f for f in facts
-            if isinstance(f, dict) and all(k in f for k in ("subject", "predicate", "object"))
-        ]
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning("Failed to parse fact extraction response: %s", raw[:200])
-        return []
+        text = text.strip()
+
+    candidates = [text]
+    if text.startswith("{{"):
+        candidates.append(text[1:])
+        if text.endswith("}}"):
+            candidates.append(text[1:-1])
+    return candidates

@@ -49,7 +49,7 @@ def search_similar_facts(
             WHERE v.embedding MATCH ? AND k = ?
               AND m.status = 'active'
               AND s.t_valid_end IS NULL
-              AND m.session_id != ?
+              AND (m.session_id IS NULL OR m.session_id != ?)
             ORDER BY v.distance
             """,
             (sqlite_vec.serialize_float32(embedding), max(1, top_k), exclude_session_id),

@@ -6,6 +6,7 @@ All LLM and embedding calls are mocked so tests run offline and deterministicall
 from __future__ import annotations
 
 import json
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,7 @@ import pytest
 from heta.config.schema import InsertPlanningConfig, HetaConfig, LLMConfig, MinerUConfig, VectorIndexConfig
 from heta.mem.client import EMBEDDING_DIM
 from heta.mem.db import get_connection, init_db
+from heta.mem.l2_conflict import ConflictResult
 from heta.mem.pipeline import remember
 
 
@@ -96,7 +98,13 @@ def _patch_pipeline(
         patch("heta.mem.pipeline.extract_episodes", return_value=episodes),
         patch("heta.mem.pipeline.extract_facts", return_value=facts),
         patch("heta.mem.pipeline.embed_text", return_value=FAKE_EMB),
-        patch("heta.mem.pipeline.detect_conflicts", return_value=(conflicts, FAKE_EMB)),
+        patch(
+            "heta.mem.pipeline.detect_conflicts_batch",
+            side_effect=lambda new_fact_texts, **kwargs: [
+                ConflictResult(ids_to_deprecate=list(conflicts), embedding=FAKE_EMB)
+                for _ in new_fact_texts
+            ],
+        ),
     ):
         yield
 
@@ -155,6 +163,45 @@ def test_remember_returns_correct_counts(config, tmp_db) -> None:
     assert result.l2_count == 2
     assert result.session_id != ""
     assert result.elapsed_s >= 0
+
+
+
+
+def test_remember_extracts_episodes_and_facts_concurrently(config, tmp_db) -> None:
+    episodes_started = threading.Event()
+    facts_started = threading.Event()
+    mock_client = MagicMock()
+
+    def _open_conn(path, *, with_vec=False):
+        c = get_connection(tmp_db, with_vec=True)
+        init_db(c)
+        return c
+
+    def fake_extract_episodes(*args, **kwargs):
+        episodes_started.set()
+        assert facts_started.wait(1.0)
+        return []
+
+    def fake_extract_facts(*args, **kwargs):
+        facts_started.set()
+        assert episodes_started.wait(1.0)
+        return []
+
+    with (
+        patch("heta.mem.pipeline.ensure_mem_dir"),
+        patch("heta.mem.pipeline.db_path", return_value=tmp_db),
+        patch("heta.mem.pipeline.get_connection", side_effect=_open_conn),
+        patch("heta.mem.pipeline.init_db"),
+        patch("heta.mem.pipeline.build_client", return_value=(mock_client, "mock-llm")),
+        patch("heta.mem.pipeline.build_embedding_client", return_value=(mock_client, "mock-emb")),
+        patch("heta.mem.pipeline.extract_episodes", side_effect=fake_extract_episodes),
+        patch("heta.mem.pipeline.extract_facts", side_effect=fake_extract_facts),
+        patch("heta.mem.pipeline.detect_conflicts_batch", return_value=[]),
+    ):
+        result = remember("some text", config)
+
+    assert result.l1_count == 0
+    assert result.l2_count == 0
 
 
 # ── L1 episode storage ────────────────────────────────────────────────────────
@@ -346,18 +393,18 @@ def test_remember_no_conflict_keeps_both_facts(config, tmp_db) -> None:
     assert objects == {"爬山", "羽毛球"}
 
 
-def test_remember_detect_conflicts_receives_session_id(config, tmp_db) -> None:
-    """detect_conflicts must be called with the current session_id so same-session
+def test_remember_detect_conflicts_batch_receives_session_id(config, tmp_db) -> None:
+    """detect_conflicts_batch must be called with the current session_id so same-session
     facts are excluded from conflict candidates."""
     captured_kwargs: dict = {}
 
-    def _fake_detect_conflicts(**kwargs):
+    def _fake_detect_conflicts_batch(new_fact_texts, **kwargs):
         captured_kwargs.update(kwargs)
-        return ([], FAKE_EMB)
+        return [ConflictResult(ids_to_deprecate=[], embedding=FAKE_EMB) for _ in new_fact_texts]
 
     with (
         _patch_pipeline(tmp_db, facts=[FACT_DICT]),
-        patch("heta.mem.pipeline.detect_conflicts", side_effect=_fake_detect_conflicts),
+        patch("heta.mem.pipeline.detect_conflicts_batch", side_effect=_fake_detect_conflicts_batch),
     ):
         result = remember("some text", config)
 
@@ -382,3 +429,24 @@ def test_remember_multiple_sessions_accumulate(config, tmp_db) -> None:
 
     assert n_sessions == 2
     assert n_turns == 2
+
+
+def test_remember_skips_duplicate_l2_fact(config, tmp_db) -> None:
+    def _duplicate_result(new_fact_texts, **kwargs):
+        return [
+            ConflictResult(ids_to_deprecate=[], embedding=FAKE_EMB, duplicate_of="old-fact")
+            for _ in new_fact_texts
+        ]
+
+    with (
+        _patch_pipeline(tmp_db, facts=[FACT_DICT]),
+        patch("heta.mem.pipeline.detect_conflicts_batch", side_effect=_duplicate_result),
+    ):
+        result = remember("duplicate fact", config)
+
+    conn = _open(tmp_db)
+    l2_rows = conn.execute("SELECT * FROM l2_semantic").fetchall()
+    conn.close()
+
+    assert result.l2_count == 0
+    assert l2_rows == []
