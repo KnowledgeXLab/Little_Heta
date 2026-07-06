@@ -228,15 +228,14 @@ def _ask_required_text(prompt: str) -> str:
 
 
 def _ask_optional_text(prompt: str) -> str | None:
-    value = Prompt.ask(prompt, default="").strip()
+    value = Prompt.ask(prompt, default="", show_default=False).strip()
     return value or None
 
 
 def _show_custom_provider_note() -> None:
     console.print()
     console.print(f"[{WARN}]?[/] Custom provider supports LiteLLM model names and OpenAI-compatible APIs.")
-    console.print(f"  [{MUTED}]LiteLLM:[/]    use provider/model names such as anthropic/claude-sonnet-4-5")
-    console.print(f"  [{MUTED}]Local API:[/]  use any model ID plus a /v1-compatible base URL")
+    console.print(f"  [{MUTED}]Custom API:[/] use any model ID plus a /v1 endpoint")
     console.print(f"  [{MUTED}]Embedding:[/]  vectors are stored with 1024 dimensions")
 
 
@@ -250,12 +249,12 @@ def _configure_custom_capability(label: str, *, required: bool) -> dict[str, str
         api_key = _ask_required_secret(f"  {label} API key")
         model = _ask_required_text(f"  {label} model")
         base_url = _ask_optional_text(
-            f"  {label} base URL (required for OpenAI-compatible relays)"
+            f"  {label} base URL (/v1 endpoint for custom OpenAI-compatible APIs)"
         )
         if _custom_base_url_required(model) and base_url is None:
             console.print(
-                f"[{WARN}]?[/] {label} base URL is required unless you use a LiteLLM provider prefix. "
-                "Use a LiteLLM provider prefix to leave it empty."
+                f"[{WARN}]?[/] {label} base URL is required for custom OpenAI-compatible APIs. "
+                "Leave it empty only for LiteLLM provider/model names."
             )
             continue
         if base_url is None:

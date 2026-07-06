@@ -68,8 +68,9 @@ You need to prepare:
 - An LLM API key for one provider: Qwen, ChatGPT, Gemini, or custom.
 - For custom providers, prepare separate chat and embedding capability settings.
   Use LiteLLM-native model names such as `openai/gpt-5.4-nano` when no base URL
-  is needed, or use any relay model ID with an OpenAI-compatible `/v1` base URL
-  (including model IDs such as `vendor/model`).
+  is needed, or use any model ID with a custom OpenAI-compatible `/v1` base URL
+  (including model IDs such as `vendor/model`). Do not include
+  `/chat/completions` in the base URL.
   Multimodal can be enabled separately when you want image parsing.
 - Optional MinerU access for PDF and Office parsing. Apply or learn more at
   [MinerU](https://mineru.net/apiManage/docs).
