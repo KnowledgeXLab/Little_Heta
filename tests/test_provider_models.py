@@ -78,10 +78,56 @@ def test_custom_openai_compatible_models_default_to_openai_prefix() -> None:
     chat_model = build_chat_model(config)
     embedding_model = build_embedding_model(config)
 
-    assert chat_model.model_name == "openai/local-chat"
+    assert chat_model.model_name == "custom_openai/local-chat"
     assert chat_model.api_base == "http://chat.local/v1"
     assert embedding_model.model_name == "openai/local-embedding"
     assert embedding_model.api_base == "http://embedding.local/v1"
+
+
+def test_custom_openai_compatible_model_ids_with_slashes_use_openai_prefix() -> None:
+    config = _heta_config(
+        LLMConfig(
+            provider="custom",
+            api_key="legacy-key",
+            chat_api_key="chat-key",
+            chat_model="bailian/deepseek-v4-pro",
+            chat_base_url="http://relay.local/v1",
+            embedding_api_key="embedding-key",
+            embedding_model="BAAI/bge-m3",
+            embedding_base_url="http://relay.local/v1",
+        )
+    )
+
+    chat_model = build_chat_model(config)
+    embedding_model = build_embedding_model(config)
+
+    assert chat_model.model_name == "custom_openai/bailian/deepseek-v4-pro"
+    assert chat_model.api_base == "http://relay.local/v1"
+    assert embedding_model.model_name == "openai/BAAI/bge-m3"
+    assert embedding_model.api_base == "http://relay.local/v1"
+
+
+def test_custom_openai_compatible_preserves_openai_prefixed_relay_model_ids() -> None:
+    config = _heta_config(
+        LLMConfig(
+            provider="custom",
+            api_key="legacy-key",
+            chat_api_key="chat-key",
+            chat_model="openai/o4-mini-deep-research",
+            chat_base_url="http://relay.local/v1",
+            embedding_api_key="embedding-key",
+            embedding_model="openai/text-embedding-3-small",
+            embedding_base_url="http://relay.local/v1",
+        )
+    )
+
+    chat_model = build_chat_model(config)
+    embedding_model = build_embedding_model(config)
+
+    assert chat_model.model_name == "custom_openai/openai/o4-mini-deep-research"
+    assert chat_model.api_base == "http://relay.local/v1"
+    assert embedding_model.model_name == "openai/openai/text-embedding-3-small"
+    assert embedding_model.api_base == "http://relay.local/v1"
 
 
 def test_provider_embedding_dimension_payload_matches_litellm_compatibility(monkeypatch) -> None:
@@ -107,6 +153,23 @@ def test_provider_embedding_dimension_payload_matches_litellm_compatibility(monk
     chatgpt = _heta_config(LLMConfig(provider="chatgpt", api_key="sk-openai"))
     build_embedding_model(chatgpt).embed(EmbeddingRequest(texts=["hello"]))
     assert calls[0]["model"] == "openai/text-embedding-3-small"
+    assert calls[0]["dimensions"] == 1024
+
+    calls.clear()
+    custom_relay = _heta_config(
+        LLMConfig(
+            provider="custom",
+            api_key="legacy-key",
+            chat_api_key="chat-key",
+            chat_model="openai/o4-mini-deep-research",
+            chat_base_url="http://relay.local/v1",
+            embedding_api_key="embedding-key",
+            embedding_model="openai/text-embedding-3-small",
+            embedding_base_url="http://relay.local/v1",
+        )
+    )
+    build_embedding_model(custom_relay).embed(EmbeddingRequest(texts=["hello"]))
+    assert calls[0]["model"] == "openai/openai/text-embedding-3-small"
     assert calls[0]["dimensions"] == 1024
 
 

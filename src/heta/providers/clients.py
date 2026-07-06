@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from heta.config.schema import HetaConfig, LLMProvider
 from heta.providers.litellm_models import LiteLLMChatModel, LiteLLMEmbeddingModel
@@ -32,6 +32,7 @@ def build_chat_model(
                 provider=config.llm.provider,
                 model_name=model_name,
                 api_base=config.llm.chat_base_url,
+                capability="chat",
             ),
             api_key=_required(config.llm.chat_api_key, "chat_api_key"),
             api_base=_effective_api_base(config.llm.provider, config.llm.chat_base_url),
@@ -56,6 +57,7 @@ def build_multimodal_model(
                 provider=config.llm.provider,
                 model_name=model_name,
                 api_base=config.llm.multimodal_base_url,
+                capability="chat",
             ),
             api_key=_required(config.llm.multimodal_api_key, "multimodal_api_key"),
             api_base=_effective_api_base(config.llm.provider, config.llm.multimodal_base_url),
@@ -78,6 +80,7 @@ def build_embedding_model(
         provider=config.llm.provider,
         model_name=model_name,
         api_base=config.llm.embedding_base_url,
+        capability="embedding",
     )
     return LiteLLMEmbeddingModel(
         EmbeddingModelConfig(
@@ -92,18 +95,40 @@ def build_embedding_model(
     )
 
 
-def resolve_litellm_model_name(*, provider: LLMProvider, model_name: str, api_base: str | None) -> str:
+OpenAICompatibleCapability = Literal["chat", "embedding"]
+
+
+def resolve_litellm_model_name(
+    *,
+    provider: LLMProvider,
+    model_name: str,
+    api_base: str | None,
+    capability: OpenAICompatibleCapability = "chat",
+) -> str:
     """Resolve a configured model name into LiteLLM provider/model syntax."""
     normalized = model_name.strip()
+    if provider == "custom":
+        if api_base:
+            return _openai_compatible_model_name(normalized, capability=capability)
+        if "/" in normalized:
+            return normalized
+        raise ValueError(
+            "Custom LLM model names without a LiteLLM provider prefix require a base_url."
+        )
     if "/" in normalized:
         return normalized
     if provider == "gemini":
         return f"gemini/{normalized}"
-    if provider == "custom" and not api_base:
-        raise ValueError(
-            "Custom LLM model names without a LiteLLM provider prefix require a base_url."
-        )
     return f"openai/{normalized}"
+
+
+def _openai_compatible_model_name(
+    model_name: str,
+    *,
+    capability: OpenAICompatibleCapability,
+) -> str:
+    route_provider = "openai" if capability == "embedding" else "custom_openai"
+    return f"{route_provider}/{model_name}"
 
 
 def chat_provider_options(config: HetaConfig) -> dict[str, Any] | None:
@@ -127,9 +152,18 @@ def embedding_provider_options(config: HetaConfig) -> dict[str, Any] | None:
 
 def default_embedding_request_dimensions(model_name: str) -> int | None:
     """Return request-time dimensions only for LiteLLM models known to accept it."""
-    if model_name.startswith("openai/text-embedding-3"):
+    routed_model_name = _strip_openai_route_prefix(model_name)
+    if routed_model_name.startswith("text-embedding-3") or routed_model_name.startswith(
+        "openai/text-embedding-3"
+    ):
         return EMBEDDING_DIM
     return None
+
+
+def _strip_openai_route_prefix(model_name: str) -> str:
+    if model_name.startswith("custom_openai/"):
+        return model_name.removeprefix("custom_openai/")
+    return model_name.removeprefix("openai/")
 
 
 def extra_body(config: HetaConfig) -> dict[str, Any] | None:
